@@ -1,0 +1,26 @@
+[project]
+name = "spiky"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Jonathan",email = "jonathanwoollettlight@proton.me"}
+]
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "cupy-cuda12x (>=13.4.1,<14.0.0)",
+    "numpy (>=1.22,<2.3)"
+]
+
+[tool.poetry]
+packages = [{include = "spiky", from = "src"}]
+
+
+[tool.poetry.group.dev.dependencies]
+pdoc = "^15.0.4"
+black = "^25.1.0"
+pytest = "^8.4.0"
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
