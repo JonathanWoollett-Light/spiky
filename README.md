@@ -5,7 +5,7 @@ The general idea is to support training a variety of state of the art models by 
 - Manages depdencies with [Poetry](https://python-poetry.org/).
 - Generate docs with `poetry run pdoc -o docs src/spiky`.
 - Format with `poetry run black .`
-- We can remove all the `#type: ignore`s when `cupy` gets its shit together and adds a type stub.
+- We can remove all the `#type: ignore`s when `cupy` sorts itself out and adds a type stub.
 
 ## TODOs
 
