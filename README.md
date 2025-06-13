@@ -13,6 +13,14 @@ Model|Implemented
 ---|---
 Feedforward network with LIF neurons trained with BPTT|x
 
+Benchmark|Implemented
+---|---
+[N-MNIST](https://www.garrickorchard.com/datasets/n-mnist)|x
+[ST-MNIST](https://hh-see.com/projects/2_project/)|x
+[Isaac-Cartpole-v0](https://isaac-sim.github.io/IsaacLab/main/source/overview/environments.html)|x
+[Isaac-Ant-v0](https://isaac-sim.github.io/IsaacLab/main/source/overview/environments.html)|x
+[Isaac-Humanoid-v0](https://isaac-sim.github.io/IsaacLab/main/source/overview/environments.html)|x
+
 Architectures|Implemented
 ---|---
 Feed forward|x
