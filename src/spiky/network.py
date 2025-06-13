@@ -1,4 +1,4 @@
-import cupy as cp
+import cupy as cp # type: ignore
 from numpy import float32
 
 """

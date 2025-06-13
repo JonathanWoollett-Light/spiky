@@ -1,9 +1,8 @@
 # import pytest
 import spiky.network as sn
-import cupy as cp
+import cupy as cp # type: ignore
 from numpy import float32
 
-# type: ignore
 DECAY: float32 = float32(0.8)
 THRESHOLD: float32 = float32(1.0)
 INPUT: int = 28 * 28
