@@ -9,6 +9,10 @@ The general idea is to support training a variety of state of the art models by 
 
 ## TODOs
 
+Model|Implemented
+---|---
+Feedforward network with LIF neurons trained with BPTT|x
+
 Architectures|Implemented
 ---|---
 Feed forward|x
