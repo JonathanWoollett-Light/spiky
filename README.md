@@ -4,7 +4,9 @@ The general idea is to support training a variety of state of the art models by 
 
 - Manages depdencies with [Poetry](https://python-poetry.org/).
 - Generate docs with `poetry run pdoc -o docs src/spiky`.
-- Format with `poetry run black .`
+- Format with `poetry run black --check .`
+- Check types with `poetry run pyright --warnings`
+- Test with `poetry run pytest`
 - We can remove all the `#type: ignore`s when `cupy` sorts itself out and adds a type stub.
 
 ## TODOs
@@ -47,6 +49,7 @@ Spike Timing Dependant Plasticity (STDP)|x
 
 ### Misc
 
+- add GitHub action that runs black, pyright, pytest and pdoc (for pdoc it should also post the github page in the action)
 - run `snnTorch` to compare and improve until reaching similar performance for n-mnist and st-mnist.
 - output the EFLOPs metrics for models to give an idea of their foundational performance.
 - run a test including sparsity in the cost function

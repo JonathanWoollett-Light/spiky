@@ -1,6 +1,6 @@
 # import pytest
 import spiky.network as sn
-import cupy as cp # type: ignore
+import cupy as cp  # type: ignore
 from numpy import float32
 
 DECAY: float32 = float32(0.8)

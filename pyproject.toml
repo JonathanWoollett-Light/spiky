@@ -20,6 +20,7 @@ packages = [{include = "spiky", from = "src"}]
 pdoc = "^15.0.4"
 black = "^25.1.0"
 pytest = "^8.4.0"
+pyright = "^1.1.402"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
