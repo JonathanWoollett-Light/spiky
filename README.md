@@ -6,6 +6,7 @@ The general idea is to support training a variety of state of the art models by 
 - Generate docs with `poetry run pdoc -o docs src/spiky`.
 - Format with `poetry run black --check .`
 - Check types with `poetry run pyright --warnings`
+- Lint with `poetry run pylint .`
 - Test with `poetry run pytest`
 - We can remove all the `#type: ignore`s when `cupy` sorts itself out and adds a type stub.
 
