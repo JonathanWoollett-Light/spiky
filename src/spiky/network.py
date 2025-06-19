@@ -108,7 +108,8 @@ class FeedForwardLayer:
         """
         Creates a feed forward network layer.
 
-        `incoming_neurons` is `[samples x feature dimensions..]`
+        Args:
+            incoming_neurons: `[samples x feature dimensions..]`
         """
         self.neurons = neurons
         self.synapses = synapses
@@ -191,6 +192,13 @@ class FeedForwardNetwork:
 # We currently don't support "truncated BPPT" which would use batches through time to train
 # for deep timesteps (in the same way using batches through samples saves memory usage but
 # reduces accuracy).
+#
+# With some changes backprop could be parallelized since each call only needs 1
+# timestep of foreprop, potentially when each foreprop timestep completes it could dispatch a
+# backprop call for that step and then it could resolve after all backprop steps
+# have resolved. This approach would increase the flat amount of compute and
+# memory required but given the high parallelism could offer massive gains for
+# large models by using multiple GPUs potentially across multiple systems.
 class BackpropagationThroughTime:
     network: FeedForwardNetwork
     """Underlying feed forward network"""

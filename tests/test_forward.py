@@ -9,6 +9,7 @@ INPUT: int = 28 * 28
 BATCH: int = 10_000
 LEARNING_RATE: float32 = float32(0.02)
 
+
 def test_net():
     neuron = sn.LIF(DECAY, THRESHOLD)
     net = sn.FeedForwardNetwork(
@@ -18,6 +19,7 @@ def test_net():
     )
     net.forward(cp.zeros((BATCH, INPUT), float32))  # type: ignore
     assert False
+
 
 def test_bptt():
     TIMESTEPS = 10
@@ -29,5 +31,5 @@ def test_bptt():
     )
     bptt = sn.BackpropagationThroughTime(net)
     bptt.forward([cp.zeros((BATCH, INPUT), float32) for _ in range(TIMESTEPS)])  # type: ignore
-    bptt.backward([cp.zeros((BATCH, INPUT), float32) for _ in range(TIMESTEPS)]) # type: ignore
+    bptt.backward([cp.zeros((BATCH, INPUT), float32) for _ in range(TIMESTEPS)])  # type: ignore
     bptt.update(LEARNING_RATE)
