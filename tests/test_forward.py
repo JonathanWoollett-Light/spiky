@@ -2,6 +2,7 @@
 import spiky.network as sn
 import cupy as cp  # type: ignore
 from numpy import float32
+from gin import nmnist
 
 DECAY: float32 = float32(0.8)
 THRESHOLD: float32 = float32(1.0)
@@ -11,6 +12,7 @@ LEARNING_RATE: float32 = float32(0.02)
 
 
 def test_net():
+    x = nmnist.nmnist()
     neuron = sn.LIF(DECAY)
     net = sn.FeedForwardNetwork(
         BATCH,
