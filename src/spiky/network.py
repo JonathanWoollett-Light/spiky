@@ -1,23 +1,22 @@
 import cupy as cp  # type: ignore
 from numpy import float32
 from cupy.cuda import cublas  # type: ignore
+from dataclasses import dataclass
 
 """
 A small `pdoc` example.
 """
 
 
+@dataclass
 class Linear:
     """A description of linear connections between layers in a feedforward neural network"""
 
     outputs: int
     """The number of output values"""
 
-    def __init__(self, outputs: int):
-        """The number of input values is dependant on the previous layer"""
-        self.outputs = outputs
 
-
+@dataclass
 class Convolutional:
     """A description of convolutional connections between layers in a feedforward neural network"""
 
@@ -44,12 +43,13 @@ class Convolutional:
         self.stride = stride if isinstance(stride, tuple) else (stride, stride)
 
 
+@dataclass
 class LIF:
     """A description of a leaky-integrate-and-fire neuron"""
 
     decay: float32
     """The rate of decay of the value/voltage of the neurons"""
-    threshold: float32
+    threshold: float32 = float32(1)
     """The threshold at which the neuron spikes"""
 
     spike_update_kernel = cp.ElementwiseKernel(  # type: ignore
@@ -74,15 +74,13 @@ class LIF:
         name="arctan_surrogate_gradient_kernel",
     )
 
-    def __init__(self, decay: float32, threshold: float32):
-        self.decay = decay
-        self.threshold = threshold
 
-
+@dataclass
 class Placeholder:
     pass
 
 
+@dataclass
 class FeedForwardLayer:
     """A layer within a feedforward neuron network"""
 
@@ -159,6 +157,7 @@ class FeedForwardLayer:
             raise Exception("todo")
 
 
+@dataclass
 class FeedForwardNetwork:
     """A feed forward neural network"""
 
@@ -198,7 +197,7 @@ class FeedForwardNetwork:
 # backprop call for that step and then it could resolve after all backprop steps
 # have resolved. This approach would increase the flat amount of compute and
 # memory required but given the high parallelism could offer massive gains for
-# large models by using multiple GPUs potentially across multiple systems.
+# large models by using multiple GPUs potentially across multiple systems.@dataclass
 class BackpropagationThroughTime:
     network: FeedForwardNetwork
     """Underlying feed forward network"""
@@ -249,7 +248,17 @@ class BackpropagationThroughTime:
 
     def backward(self, targets: list[cp.ndarray]):  # type: ignore
         """
-        Backpropagates `len(target)` timesteps.
+        Backpropagates `targets`.
+
+        - `len(target) == timesteps`.
+        - `targets[:].shape == [samples x feature dimensions...]`.
+
+        A timestep is considered *unprocessed* when it has been propagated forward.
+        A timestep is considered *processed* when it has been propagated backwards.
+        When calling `backward()` it must be called with a number of `targets` less than or equal to the number of unprocessed timestep.
+        When calling `update()` unprocessed timestep are discarded.
+
+        
 
         Valid code might look like:
         ```python

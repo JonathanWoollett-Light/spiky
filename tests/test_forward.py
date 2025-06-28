@@ -11,7 +11,7 @@ LEARNING_RATE: float32 = float32(0.02)
 
 
 def test_net():
-    neuron = sn.LIF(DECAY, THRESHOLD)
+    neuron = sn.LIF(DECAY)
     net = sn.FeedForwardNetwork(
         BATCH,
         INPUT,
@@ -23,7 +23,7 @@ def test_net():
 
 def test_bptt():
     TIMESTEPS = 10
-    neuron = sn.LIF(DECAY, THRESHOLD)
+    neuron = sn.LIF(DECAY)
     net = sn.FeedForwardNetwork(
         BATCH,
         INPUT,
