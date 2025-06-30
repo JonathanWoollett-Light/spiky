@@ -12,7 +12,7 @@ LEARNING_RATE: float32 = float32(0.02)
 
 
 def test_net():
-    x = nmnist.nmnist()
+    _x = nmnist.nmnist()
     neuron = sn.LIF(DECAY)
     net = sn.FeedForwardNetwork(
         BATCH,

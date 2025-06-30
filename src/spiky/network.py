@@ -1,3 +1,4 @@
+from typing import Any
 import cupy as cp  # type: ignore
 from numpy import float32
 from cupy.cuda import cublas  # type: ignore
@@ -280,12 +281,14 @@ class BackpropagationThroughTime:
     """If `backward` has been called since last `forward`"""
     number_backed: int
     """Number of timesteps backpropagated through"""
+    cudnn_handles: list[Any]  # type: ignore
 
     def __init__(self, network: FeedForwardNetwork):
         self.network = network
         self.errors = [cp.zeros(layer.neuron_values.shape) for layer in network.layers]  # type: ignore
         self.delta_weights = [cp.zeros(layer.synapse_values.shape) for layer in network.layers]  # type: ignore
         self.backed = False
+        self.cudnn_handles = {}  # Store cuDNN handles per device # type: ignore
 
     def forward(self, inputs: list[cp.ndarray]):  # type: ignore
         """Performs and records the forward propagation of `inputs` through the network"""
@@ -310,6 +313,258 @@ class BackpropagationThroughTime:
             neurons.arctan_surrogate_gradient_kernel(membrane_potential, membrane_potential)  # type: ignore
         else:
             raise Exception("todo")
+
+    def __get_cudnn_handle(self):  # type: ignore
+        """Get or create cuDNN handle for current device"""
+        device_id = cp.cuda.Device().id  # type: ignore
+        if device_id not in self.cudnn_handles:  # type: ignore
+            handle = cp.cuda.cudnn.get_handle()  # type: ignore
+            self.cudnn_handles[device_id] = handle  # type: ignore
+        return self.cudnn_handles[device_id]  # type: ignore
+
+    def __conv2d_backward_weight(
+        self,
+        prev_spikes: cp.ndarray,  # type: ignore
+        errors: cp.ndarray,  # type: ignore
+        delta_weights: cp.ndarray,  # type: ignore
+        stride: tuple[int, int],
+        beta: float,
+    ) -> None:
+        """cuDNN-accelerated weight gradient calculation"""
+        handle = self.__get_cudnn_handle()  # type: ignore
+
+        # Create tensor descriptors (NHWC format)
+        x_desc = cp.cuda.cudnn.create_tensor_descriptor(  # type: ignore
+            prev_spikes, format=cp.cuda.cudnn.CUDNN_TENSOR_NHWC  # type: ignore
+        )
+        dy_desc = cp.cuda.cudnn.create_tensor_descriptor(  # type: ignore
+            errors, format=cp.cuda.cudnn.CUDNN_TENSOR_NHWC  # type: ignore
+        )
+        dw_desc = cp.cuda.cudnn.create_filter_descriptor(delta_weights)  # type: ignore
+
+        # Create convolution descriptor
+        conv_desc = cp.cuda.cudnn.create_convolution_descriptor(  # type: ignore
+            pad=(0, 0),
+            stride=stride,
+            dtype=prev_spikes.dtype,  # type: ignore
+            mode=cp.cuda.cudnn.CUDNN_CROSS_CORRELATION,  # type: ignore
+        )
+
+        # Find optimal algorithm
+        algo = cp.cuda.cudnn.get_convolution_backward_filter_algorithm(  # type: ignore
+            handle,
+            x_desc,
+            dy_desc,
+            conv_desc,
+            dw_desc,
+            preference=cp.cuda.cudnn.CUDNN_CONVOLUTION_BWD_FILTER_PREFER_FASTEST,  # type: ignore
+        )
+
+        # Get workspace size
+        workspace_size = cp.cuda.cudnn.get_convolution_backward_filter_workspace_size(  # type: ignore
+            handle, x_desc, dy_desc, conv_desc, dw_desc, algo
+        )
+        workspace = cp.empty(workspace_size, dtype=cp.uint8) if workspace_size > 0 else None  # type: ignore
+
+        # Perform convolution backward
+        alpha = 1.0
+        beta_cudnn = 1.0 if beta != 0 else 0.0  # Accumulate if beta != 0
+        cp.cuda.cudnn.convolution_backward_filter(  # type: ignore
+            handle,
+            alpha,
+            x_desc,
+            prev_spikes,
+            dy_desc,
+            errors,
+            conv_desc,
+            algo,
+            workspace,
+            workspace_size,
+            beta_cudnn,
+            dw_desc,
+            delta_weights,
+        )
+
+    def __conv2d_backward_input(  # type: ignore
+        self,
+        weight: cp.ndarray,  # type: ignore
+        errors: cp.ndarray,  # type: ignore
+        input_shape: tuple[int, int, int, int],
+        stride: tuple[int, int],
+    ) -> cp.ndarray:  # type: ignore
+        """cuDNN-accelerated input gradient calculation"""
+        handle = self.__get_cudnn_handle()  # type: ignore
+        grad_input = cp.zeros(input_shape, dtype=cp.float32)  # type: ignore
+
+        # Create tensor descriptors (NHWC format)
+        dx_desc = cp.cuda.cudnn.create_tensor_descriptor(  # type: ignore
+            grad_input, format=cp.cuda.cudnn.CUDNN_TENSOR_NHWC  # type: ignore
+        )
+        dy_desc = cp.cuda.cudnn.create_tensor_descriptor(  # type: ignore
+            errors, format=cp.cuda.cudnn.CUDNN_TENSOR_NHWC  # type: ignore
+        )
+        w_desc = cp.cuda.cudnn.create_filter_descriptor(weight)  # type: ignore
+
+        # Create convolution descriptor
+        conv_desc = cp.cuda.cudnn.create_convolution_descriptor(  # type: ignore
+            pad=(0, 0),
+            stride=stride,
+            dtype=errors.dtype,  # type: ignore
+            mode=cp.cuda.cudnn.CUDNN_CROSS_CORRELATION,  # type: ignore
+        )
+
+        # Find optimal algorithm
+        algo = cp.cuda.cudnn.get_convolution_backward_data_algorithm(  # type: ignore
+            handle,
+            w_desc,
+            dy_desc,
+            conv_desc,
+            dx_desc,
+            preference=cp.cuda.cudnn.CUDNN_CONVOLUTION_BWD_DATA_PREFER_FASTEST,  # type: ignore
+        )
+
+        # Get workspace size
+        workspace_size = cp.cuda.cudnn.get_convolution_backward_data_workspace_size(  # type: ignore
+            handle, w_desc, dy_desc, conv_desc, dx_desc, algo
+        )
+        workspace = cp.empty(workspace_size, dtype=cp.uint8) if workspace_size > 0 else None  # type: ignore
+
+        # Perform convolution backward
+        alpha = 1.0
+        beta = 0.0  # Overwrite grad_input
+        cp.cuda.cudnn.convolution_backward_data(  # type: ignore
+            handle,
+            alpha,
+            w_desc,
+            weight,
+            dy_desc,
+            errors,
+            conv_desc,
+            algo,
+            workspace,
+            workspace_size,
+            beta,
+            dx_desc,
+            grad_input,
+        )
+        return grad_input  # type: ignore
+
+    def __backward_output(  # type: ignore
+        self,
+        target: cp.ndarray,  # type: ignore
+        spike_values: list[cp.ndarray],  # type: ignore
+        weighted_input_values: list[cp.ndarray],  # type: ignore
+        beta: float,
+    ) -> cp.ndarray:  # type: ignore
+        number_of_layers = len(self.network.layers)
+        # output_layer_index
+        oli = number_of_layers - 1
+
+        ol = self.network.layers[oli]
+        self.__surrogate(ol.neurons, weighted_input_values[oli])  # type: ignore
+        output_gradients = weighted_input_values  # type: ignore
+        self.errors[oli] = (spike_values - target) * output_gradients  # type: ignore
+
+        if isinstance(ol.synapses, Linear):
+            # Linear layer weight update
+            gemm(self.spike_values[oli - 1], self.errors[oli], self.delta_weights[oli], trans_a=True, beta=beta)  # type: ignore
+            return self.errors[oli]  # type: ignore
+        else:
+            assert isinstance(ol.synapses, Convolutional)
+            # Convolutional layer weight update
+            self.__conv2d_backward_weight(  # type: ignore
+                prev_spikes=spike_values[oli - 1],  # type: ignore
+                errors=self.errors[oli],  # type: ignore
+                delta_weights=self.delta_weights[oli],  # type: ignore
+                stride=ol.synapses.stride,
+                beta=beta,
+            )
+            # Calculate input gradients for previous layer
+            return self.__conv2d_backward_input(  # type: ignore
+                weight=ol.synapse_values,  # type: ignore
+                errors=self.errors[oli],  # type: ignore
+                input_shape=self.network.layers[oli - 1].neuron_values.shape,  # type: ignore
+                stride=ol.synapses.stride,
+            )
+
+    def __backward_hidden(  # type: ignore
+        self,
+        spike_values: list[cp.ndarray],  # type: ignore
+        weighted_input_values: list[cp.ndarray],  # type: ignore
+        beta: float,
+        delta_next: cp.ndarray,  # type: ignore
+        li: int,
+    ) -> cp.ndarray:  # type: ignore
+        layer = self.network.layers[li]
+        after_layer = self.network.layers[li + 1]
+        self.__surrogate(layer.neurons, weighted_input_values[li])  # type: ignore
+        gradient = weighted_input_values[li]  # type: ignore
+
+        # Calculate the error for this layer
+        if isinstance(after_layer.synapses, Linear):
+            gemm(delta_next, weighted_input_values[li + 1], self.errors[li], trans_b=True)  # type: ignore
+        else:
+            assert isinstance(after_layer.synapses, Convolutional)
+            self.errors[li] = self.__conv2d_backward_input(  # type: ignore
+                weight=after_layer.synapse_values,  # type: ignore
+                errors=delta_next,  # type: ignore
+                input_shape=layer.shape,  # type: ignore
+                stride=after_layer.synapses.stride,  # type: ignore
+            )
+
+        self.errors[li] *= gradient  # type: ignore
+
+        # Update weights for current layer
+        if isinstance(layer.synapses, Linear):
+            gemm(spike_values[li - 1], self.errors[li], self.delta_weights[li], trans_a=True, beta=beta)  # type: ignore
+        else:
+            assert isinstance(layer.synapses, Convolutional)
+            self.__conv2d_backward_weight(  # type: ignore
+                prev_spikes=spike_values[li - 1],  # type: ignore
+                errors=self.errors[li],  # type: ignore
+                delta_weights=self.delta_weights[li],  # type: ignore
+                stride=layer.synapses.stride,
+                beta=beta,
+            )
+
+        return self.errors[li]  # type: ignore
+
+    def __backward_input(
+        self,
+        weighted_input_values: list[cp.ndarray],  # type: ignore
+        beta: float,
+        delta_next: cp.ndarray,  # type: ignore
+        input_values: cp.ndarray,  # type: ignore
+    ) -> None:
+        input_layer = self.network.layers[0]
+        first_hidden_layer = self.network.layers[1]
+        self.__surrogate(weighted_input_values[0], weighted_input_values[0])  # type: ignore
+        gradient = weighted_input_values[0]  # type: ignore
+
+        if isinstance(first_hidden_layer.synapses, Linear):
+            gemm(delta_next, weighted_input_values[1], self.errors[0], trans_b=True)  # type: ignore
+        else:
+            assert isinstance(first_hidden_layer.synapses, Convolutional)
+            self.errors[0] = self.__conv2d_backward_input(  # type:ignore
+                weight=first_hidden_layer.synapse_values,  # type:ignore
+                errors=delta_next,  # type:ignore
+                input_shape=input_layer.neuron_values.shape,  # type:ignore
+                stride=first_hidden_layer.synapses.stride,
+            )
+
+        self.errors[0] *= gradient  # type: ignore
+
+        if isinstance(input_layer.synapses, Linear):
+            gemm(input_values, self.errors[0], self.delta_weights[0], trans_a=True, beta=beta)  # type: ignore
+        else:
+            assert isinstance(input_layer.synapses, Convolutional)
+            self.__conv2d_backward_weight(  # type:ignore
+                prev_spikes=input_values,  # type:ignore
+                errors=self.errors[0],  # type:ignore
+                delta_weights=self.delta_weights[0],  # type:ignore
+                stride=input_layer.synapses.stride,
+                beta=beta,
+            )
 
     def backward(self, targets: list[cp.ndarray]):  # type: ignore
         """
@@ -350,8 +605,6 @@ class BackpropagationThroughTime:
             beta = 1.0 if self.backed else 0.0
 
             number_of_layers = len(self.network.layers)
-            # output_layer_index
-            oli = number_of_layers - 1
 
             # Inputs values, weighted input values and spikes for this time step.
             input_values = self.inputs.pop()  # type: ignore
@@ -360,28 +613,27 @@ class BackpropagationThroughTime:
             spike_values = self.spike_values[timestep]  # type: ignore
 
             # Output layer
-            self.__surrogate(self.network.layers[oli].neurons, weighted_input_values[oli])  # type: ignore
-            output_gradients = weighted_input_values  # type: ignore
-            self.errors[oli] = (spike_values - target) * output_gradients  # type: ignore
-            gemm(self.spike_values[oli - 1], self.errors[oli], self.delta_weights[oli], trans_a=True, beta=beta)  # type: ignore
-            delta_next = self.errors[oli]  # type: ignore
+            delta_next = self.__backward_output(  # type: ignore
+                target, spike_values, weighted_input_values, beta  # type: ignore
+            )
 
             # Hidden layers
-            for li in range(oli - 1, 0, -1):
-                self.__surrogate(self.network.layers[li].neurons, weighted_input_values[li])  # type: ignore
-                gradient = weighted_input_values[li]  # type: ignore
-                gemm(delta_next, weighted_input_values[li + 1], self.errors[oli], trans_b=True)  # type: ignore
-                self.errors[oli] *= gradient  # type: ignore
-                gemm(spike_values[oli - 1], self.errors[oli], self.delta_weights[li], trans_a=True, beta=beta)  # type: ignore
-                delta_next = self.errors[oli]  # type: ignore
+            for li in range(number_of_layers - 2, 0, -1):
+                delta_next = self.__backward_hidden(  # type: ignore
+                    spike_values,
+                    weighted_input_values,
+                    beta,
+                    delta_next,  # type: ignore
+                    li,
+                )
 
             # Input layer
-            self.__surrogate(weighted_input_values[0], weighted_input_values[0])  # type: ignore
-            gradient = weighted_input_values[0]  # type: ignore
-            gemm(delta_next, weighted_input_values[1], self.errors[0], trans_b=True)  # type: ignore
-            self.errors[0] *= gradient  # type: ignore
-            gemm(input_values, self.errors[0], self.delta_weights[0], trans_a=True, beta=beta)  # type: ignore
-
+            self.__backward_input(  # type: ignore
+                weighted_input_values,
+                beta,
+                delta_next,  # type: ignore
+                input_values,  # type: ignore
+            )
             self.backed = True
 
     def update(self, learning_rate: float32):
