@@ -2,6 +2,7 @@ import cupy as cp  # type: ignore
 from numpy import float32
 from cupy.cuda import cublas  # type: ignore
 from dataclasses import dataclass
+import cupy.cudnn
 
 """
 A small `pdoc` example.
@@ -123,7 +124,24 @@ class FeedForwardLayer:
                 case _:
                     raise Exception("todo")
         else:
-            raise Exception("todo")
+            assert isinstance(synapses, Convolutional)
+            # Unpack kernel and stride dimensions
+            kernel_h, kernel_w = synapses.kernel_size
+            stride_h, stride_w = synapses.stride
+
+            match incoming_neurons:
+                case (samples, height, width, channels):
+                    # Calculate output dimensions
+                    out_h = (height - kernel_h) // stride_h + 1
+                    out_w = (width - kernel_w) // stride_w + 1
+
+                    # Initialize arrays
+                    self.neuron_values = cp.zeros((samples, out_h, out_w, synapses.out_channels), float32)  # type: ignore
+                    self.synapse_values = cp.zeros((synapses.out_channels, channels, kernel_h, kernel_w), float32)  # type: ignore
+                    self.spike_values = cp.zeros((samples, out_h, out_w, synapses.out_channels), float32)  # type: ignore
+                    self.weighted_input_values = cp.zeros((samples, out_h, out_w, synapses.out_channels), float32)  # type: ignore
+                case _:
+                    raise Exception("Unsupported input shape for convolutional layer")
 
     def forward(self, inputs: cp.ndarray):  # type: ignore
         """Passes an input into this layer"""
@@ -131,28 +149,75 @@ class FeedForwardLayer:
 
     def rforward(self, inputs: cp.ndarray, weighted_input_values: cp.ndarray | None, spike_values: cp.ndarray | None):  # type: ignore
         """Passes an input into this layer"""
+
+        # Propagate through synapses.
         if isinstance(self.synapses, Linear):
             match len(inputs.shape):  # type: ignore
-                case 2:
+                case 2:  # [samples, features]
                     cp.matmul(inputs, self.synapse_values, self.weighted_input_values)  # type: ignore
                     if weighted_input_values:
                         cp.copyto(weighted_input_values, self.weighted_input_values)  # type: ignore
-                    if isinstance(self.neurons, LIF):
-                        self.neurons.spike_update_kernel(  # type: ignore
-                            self.weighted_input_values,  # type: ignore
-                            self.neurons.decay,
-                            self.neurons.threshold,
-                            self.neuron_values,  # type: ignore
-                            self.spike_values,  # type: ignore
-                            self.neuron_values,  # type: ignore
-                        )
-                        if spike_values:
-                            cp.copyto(spike_values, self.spike_values)  # type: ignore
-                    else:
-                        raise Exception("todo")
-
                 case _:
                     raise Exception("todo")
+        else:
+            assert isinstance(self.synapses, Convolutional)
+
+            # Get convolution parameters
+            stride_h, stride_w = self.synapses.stride
+
+            # Create cuDNN descriptors
+            x_desc = cupy.cudnn.create_tensor_descriptor(  # type: ignore
+                inputs, format=cupy.cudnn.CUDNN_TENSOR_NHWC  # type: ignore
+            )
+            w_desc = cupy.cudnn.create_filter_descriptor(  # type: ignore
+                self.synapse_values, format=cupy.cudnn.CUDNN_TENSOR_NCHW  # type: ignore
+            )
+            y_desc = cupy.cudnn.create_tensor_descriptor(  # type: ignore
+                self.weighted_input_values, format=cupy.cudnn.CUDNN_TENSOR_NHWC  # type: ignore
+            )
+            conv_desc = cupy.cudnn.create_convolution_descriptor(  # type: ignore
+                pad=(0, 0),
+                stride=(stride_h, stride_w),
+                dtype=inputs.dtype,  # type: ignore
+                mode=cupy.cudnn.CUDNN_CROSS_CORRELATION,  # type: ignore
+            )
+
+            # Find optimal convolution algorithm
+            algo = cupy.cudnn.get_convolution_forward_algorithm(  # type: ignore
+                x_desc,
+                w_desc,
+                conv_desc,
+                y_desc,
+                preference=cupy.cudnn.CUDNN_CONVOLUTION_FWD_PREFER_FASTEST,  # type: ignore
+            )
+
+            # Perform convolution
+            cupy.cudnn.convolution_forward(  # type: ignore
+                alpha=1.0,
+                src_desc=x_desc,
+                src_data=inputs,
+                filter_desc=w_desc,
+                filter_data=self.synapse_values,  # type: ignore
+                conv_desc=conv_desc,
+                algo=algo,
+                work_space=None,  # Auto-managed by cuDNN
+                beta=0.0,
+                dest_desc=y_desc,
+                dest_data=self.weighted_input_values,  # type: ignore
+            )
+
+        # Propagate into neurons.
+        if isinstance(self.neurons, LIF):
+            self.neurons.spike_update_kernel(  # type: ignore
+                self.weighted_input_values,  # type: ignore
+                self.neurons.decay,
+                self.neurons.threshold,
+                self.neuron_values,  # type: ignore
+                self.spike_values,  # type: ignore
+                self.neuron_values,  # type: ignore
+            )
+            if spike_values:
+                cp.copyto(spike_values, self.spike_values)  # type: ignore
         else:
             raise Exception("todo")
 
@@ -257,8 +322,6 @@ class BackpropagationThroughTime:
         A timestep is considered *processed* when it has been propagated backwards.
         When calling `backward()` it must be called with a number of `targets` less than or equal to the number of unprocessed timestep.
         When calling `update()` unprocessed timestep are discarded.
-
-        
 
         Valid code might look like:
         ```python
