@@ -2,6 +2,12 @@
 
 The general idea is to support training a variety of state of the art models by assmebling state of the art techniques then running these against robotics benchmarks to answer experimental questions e.g. "are more bio-plausible models better at embodied learning?".
 
+## Installation
+
+This package is not published yet.
+
+## Development
+
 - Manages depdencies with [Poetry](https://python-poetry.org/).
 - Generate docs with `poetry run pdoc -o docs src/spiky`.
 - Format with `poetry run black --check .`
@@ -9,6 +15,33 @@ The general idea is to support training a variety of state of the art models by 
 - Lint with `poetry run pylint .`
 - Test with `poetry run pytest`
 - We can remove all the `#type: ignore`s when `cupy` sorts itself out and adds a type stub.
+
+### Development Prerequisites
+
+1. Python >=3.13
+2. [Poetry](https://python-poetry.org/)
+
+### Development Installation
+
+1. Install dependencies
+
+   ```bash
+   poetry install
+   ```
+
+2. Install PyTorch within the enviroment e.g.
+
+   ```bash
+   poetry run pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+   ```
+
+### Testing
+
+You can run a specific test with (where `-s` avoids capturing the output):
+
+```
+poetry run pytest .\tests\test_against_snntorch.py::test_against_snntorch -s
+```
 
 ## TODOs
 

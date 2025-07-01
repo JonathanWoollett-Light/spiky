@@ -23,6 +23,7 @@ pytest = "^8.4.0"
 pyright = "^1.1.402"
 pylint = "^3.3.7"
 gin = {path = "../gin", develop = true}
+snntorch = "^0.9.4"
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]
