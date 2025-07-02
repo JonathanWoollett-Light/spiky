@@ -17,25 +17,46 @@ class Linear:
     outputs: int
     """The number of output values"""
 
+@dataclass
+class Pooling:
+    kernel_size: tuple[int, int]
+    """Kernel size `[height, width]`"""
+    stride: tuple[int, int]
+    """Stride of the kernel `[height, width]`"""
+
+    def __init__(
+        self,
+        kernel_size: tuple[int, int] | int,
+        stride: tuple[int, int] | int = 1,
+    ):
+        self.kernel_size = (
+            kernel_size
+            if isinstance(kernel_size, tuple)
+            else (kernel_size, kernel_size)
+        )
+        self.stride = stride if isinstance(stride, tuple) else (stride, stride)
 
 @dataclass
 class Convolutional:
     """A description of convolutional connections between layers in a feedforward neural network"""
 
     out_channels: int
-    """The number of output channels"""
+    """Number of output channels"""
     kernel_size: tuple[int, int]
-    """The kernel size `[height, width]`"""
+    """Kernel size `[height, width]`"""
     stride: tuple[int, int]
-    """The stride of the kernel `[height, width]`"""
+    """Stride of the kernel `[height, width]`"""
+    pooling: Pooling | None
+    """Pooling applied after convolution"""
 
     def __init__(
         self,
         out_channels: int,
         kernel_size: tuple[int, int] | int,
         stride: tuple[int, int] | int = 1,
+        pooling: Pooling | None = None,
     ):
-        """The number of input channels is dependant on the previous layer"""
+        """Number of input channels is dependant on the previous layer"""
         self.out_channels = out_channels
         self.kernel_size = (
             kernel_size
@@ -43,6 +64,7 @@ class Convolutional:
             else (kernel_size, kernel_size)
         )
         self.stride = stride if isinstance(stride, tuple) else (stride, stride)
+        self.pooling = pooling
 
 
 @dataclass
@@ -132,9 +154,14 @@ class FeedForwardLayer:
 
             match incoming_neurons:
                 case (samples, height, width, channels):
+                    is_pooling = synapses.pooling is not None
+                    pool_kernel = synapses.pooling.kernel_size if is_pooling else (1,1)
+                    pool_stride = synapses.pooling.stride if is_pooling else (1,1)
+
                     # Calculate output dimensions
                     out_h = (height - kernel_h) // stride_h + 1
                     out_w = (width - kernel_w) // stride_w + 1
+                        
 
                     # Initialize arrays
                     self.neuron_values = cp.zeros((samples, out_h, out_w, synapses.out_channels), float32)  # type: ignore
