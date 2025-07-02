@@ -14,7 +14,6 @@ This package is not published yet.
 - Check types with `poetry run pyright --warnings`
 - Lint with `poetry run pylint .`
 - Test with `poetry run pytest`
-- We can remove all the `#type: ignore`s when `cupy` sorts itself out and adds a type stub.
 
 ### Development Prerequisites
 
@@ -88,6 +87,8 @@ Spike Timing Dependant Plasticity (STDP)|x
 
 ### Misc
 
+- re-write to lower level `cuDNN` to avoid `CuPy`s bad documentation (for `cupy.cudnn`) and worse performance.
+  The aim should be to acheive similat performance to snnTorch in n-mnist classification.
 - add GitHub action that runs black, pyright, pytest and pdoc (for pdoc it should also post the github page in the action)
 - run `snnTorch` to compare and improve until reaching similar performance for n-mnist and st-mnist.
 - output the EFLOPs metrics for models to give an idea of their foundational performance.
