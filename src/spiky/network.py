@@ -3,7 +3,7 @@ import cupy as cp  # type: ignore
 from numpy import float32
 from cupy.cuda import cublas  # type: ignore
 from dataclasses import dataclass
-import cupy.cudnn
+import cudnn # Here is the import for cudnn you should use
 
 """
 A small `pdoc` example.
@@ -154,9 +154,11 @@ class FeedForwardLayer:
 
             match incoming_neurons:
                 case (samples, height, width, channels):
-                    is_pooling = synapses.pooling is not None
-                    pool_kernel = synapses.pooling.kernel_size if is_pooling else (1,1)
-                    pool_stride = synapses.pooling.stride if is_pooling else (1,1)
+                    pool_kernel = (1,1)
+                    pool_stride = (1,1)
+                    if synapses.pooling is not None:
+                        pool_kernel = synapses.pooling.kernel_size
+                        pool_stride = synapses.pooling.stride
 
                     # Calculate output dimensions
                     out_h = (height - kernel_h) // stride_h + 1
