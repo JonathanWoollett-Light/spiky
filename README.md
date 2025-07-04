@@ -18,7 +18,7 @@ This package is not published yet.
 ### Development Prerequisites
 
 1. Python >=3.13
-2. [Poetry](https://python-poetry.org/)
+1. [Poetry](https://python-poetry.org/)
 
 ### Development Installation
 
@@ -28,7 +28,7 @@ This package is not published yet.
    poetry install
    ```
 
-2. Install PyTorch within the enviroment e.g.
+1. Install PyTorch within the enviroment e.g.
 
    ```bash
    poetry run pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
@@ -44,46 +44,32 @@ poetry run pytest .\tests\test_against_snntorch.py::test_against_snntorch -s
 
 ## TODOs
 
-Model|Implemented
----|---
-Feedforward network with LIF neurons trained with BPTT|x
+The below table lists all the dimensions I am looking at testing across, for practical concerns I
+wouldn't be testing the cartesian product of all combinations but I will try and do as many as I can.
 
-Benchmark|Implemented
----|---
-[N-MNIST](https://www.garrickorchard.com/datasets/n-mnist)|🚧
-[ST-MNIST](https://hh-see.com/projects/2_project/)|x
-[Isaac-Cartpole-v0](https://isaac-sim.github.io/IsaacLab/main/source/overview/environments.html)|x
-[Isaac-Ant-v0](https://isaac-sim.github.io/IsaacLab/main/source/overview/environments.html)|x
-[Isaac-Humanoid-v0](https://isaac-sim.github.io/IsaacLab/main/source/overview/environments.html)|x
+Benchmark|Synapses|Architectures|Neurons|Optimizers|Hardware
+---|---|---|---|---|---
+[N-MNIST](https://www.garrickorchard.com/datasets/n-mnist)|Linear|Feed forward|Leaky Integrate and Fire (LIF)|Backpropagation through time (BPTT)|CPU
+[ST-MNIST](https://hh-see.com/projects/2_project/)|Convolutional|Reservoir|Adaptive LIF|SpikeProp|GPU
+[Isaac-Cartpole-v0](https://isaac-sim.github.io/IsaacLab/main/source/overview/environments.html)| | |Resonate and fire|SuperSpike|TPU
+[Isaac-Ant-v0](https://isaac-sim.github.io/IsaacLab/main/source/overview/environments.html)| | |Quadratic LIF|SLAYER|FPGA
+[Isaac-Humanoid-v0](https://isaac-sim.github.io/IsaacLab/main/source/overview/environments.html)| | |Izhikevich|EventProp|FPAA
+| | | |Hodgkin-Huxley|Spike Timing Dependant Plasticity (STDP)|memresistive FPAA
+| | | |Sigma Delta (SDNN)| |
 
-Architectures|Implemented
----|---
-Feed forward|x
-Reservoir|x
+From these experiments I hope to gather the data of:
 
-Synapses|Implemented
----|---
-Linear|✓
-Convolutional|🚧
+- Time to reach X accuracy.
+- Operations to reach X accuracy (all variants e.g. floating point operations, synpatic operations, effective operations, etc.).
+- Power to reach X accuracy.
+- Cost to reach X accuracy.
 
-Neurons|Implemented
----|---
-Leaky Integrate and Fire (LIF)|✓
-Adaptive LIF|x
-Resonate and fire|x
-Quadratic LIF|x
-Izhikevich|x
-Hodgkin-Huxley|x
-Sigma Delta (SDNN)|x
+From these I hope to form a view on:
 
-Optimizers|Implemented
----|---
-Backpropagation through time (BPTT)|x
-SpikeProp|x
-SuperSpike|x
-SLAYER|x
-EventProp|x
-Spike Timing Dependant Plasticity (STDP)|x
+- Models which can outperform existing models given better hardware optimization.
+- Non-standard models which can currently outperform existing standard models.
+- Models which are best at task Y (cartpole, ant, etc.).
+- etc.
 
 ### Misc
 
