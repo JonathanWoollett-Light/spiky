@@ -54,8 +54,10 @@ Benchmark|Synapses|Architectures|Neurons|Optimizers|Hardware
 [Isaac-Cartpole-v0](https://isaac-sim.github.io/IsaacLab/main/source/overview/environments.html)| | |Resonate and fire|SuperSpike|TPU
 [Isaac-Ant-v0](https://isaac-sim.github.io/IsaacLab/main/source/overview/environments.html)| | |Quadratic LIF|SLAYER|FPGA
 [Isaac-Humanoid-v0](https://isaac-sim.github.io/IsaacLab/main/source/overview/environments.html)| | |Izhikevich|EventProp|FPAA
-| | | |Hodgkin-Huxley|Spike Timing Dependant Plasticity (STDP)|memresistive FPAA
+| | | |Hodgkin-Huxley|Spike Timing Dependant Plasticity (STDP)|memFPAA[^1]
 | | | |Sigma Delta (SDNN)| |
+
+[^1]: [Memristive Field-Programmable Analog Arrays for Analog Computing](https://advanced.onlinelibrary.wiley.com/doi/full/10.1002/adma.202206648)
 
 From these experiments I hope to gather the data of:
 
