@@ -75,6 +75,8 @@ From these I hope to form a view on:
 
 An overarching theme guiding my work is "Can SNNs perform online learning to adapt to degradation?".
 
+I'm thinking I will define models and their training declaratively and then implement executors. A LIF SNN feedforward network might be defined with a JSON file, from this we can gather algorithmic metrics like the number of synaptic operations required for inference and training, we can then implement CPU and GPU (and potentially FPGA, and FPAA etc.) executors to measure system metrics like real-time performance. Importantly the algorithmic metrics give us insight into what could be acheived given optimized hardware and where potentially specilized hardware might be useful. An extreme example would be given an ASIC with memristors the latency of a LIF feedforward SNN in real-time would depend on the material properties of the memrestiors, thus we can directly tie the algorithms potential performance to hardware development e.g. "if hardware with X properties exists this algorithm will be N ms faster than the current approach".
+
 ### Misc
 
 - re-write to lower level `cuDNN` to avoid `CuPy`s bad documentation (for `cupy.cudnn`) and worse performance.
