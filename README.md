@@ -47,15 +47,15 @@ poetry run pytest .\tests\test_against_snntorch.py::test_against_snntorch -s
 The below table lists all the dimensions I am looking at testing across, for practical concerns I
 wouldn't be testing the cartesian product of all combinations but I will try and do as many as I can.
 
-Benchmark|Synapses|Architectures|Neurons|Optimizers|Hardware
----|---|---|---|---|---
-[N-MNIST](https://www.garrickorchard.com/datasets/n-mnist)|Linear|Feed forward|Leaky Integrate and Fire (LIF)|Backpropagation through time (BPTT)|CPU
-[ST-MNIST](https://hh-see.com/projects/2_project/)|Convolutional|Reservoir|Adaptive LIF|SpikeProp|GPU
-[Isaac-Cartpole-v0](https://isaac-sim.github.io/IsaacLab/main/source/overview/environments.html)| | |Resonate and fire|SuperSpike|TPU
-[Isaac-Ant-v0](https://isaac-sim.github.io/IsaacLab/main/source/overview/environments.html)| | |Quadratic LIF|SLAYER|FPGA
-[Isaac-Humanoid-v0](https://isaac-sim.github.io/IsaacLab/main/source/overview/environments.html)| | |Izhikevich|EventProp|FPAA
-[NeuroBench](https://github.com/NeuroBench/neurobench)| | |Hodgkin-Huxley|Spike Timing Dependant Plasticity (STDP)|memFPAA[^1]
-| | | |Sigma Delta (SDNN)| |
+Benchmark|Synapses|Architectures|Neurons|Optimizers|Hardware|Noise
+---|---|---|---|---|---|---
+[N-MNIST](https://www.garrickorchard.com/datasets/n-mnist)|Linear|Feed forward|Leaky Integrate and Fire (LIF)|Backpropagation through time (BPTT)|CPU|None
+[ST-MNIST](https://hh-see.com/projects/2_project/)|Convolutional|Reservoir|Adaptive LIF|SpikeProp|GPU|Random
+[Isaac-Cartpole-v0](https://isaac-sim.github.io/IsaacLab/main/source/overview/environments.html)| | |Resonate and fire|SuperSpike|TPU|Adverserial
+[Isaac-Ant-v0](https://isaac-sim.github.io/IsaacLab/main/source/overview/environments.html)| | |Quadratic LIF|SLAYER|FPGA|
+[Isaac-Humanoid-v0](https://isaac-sim.github.io/IsaacLab/main/source/overview/environments.html)| | |Izhikevich|EventProp|FPAA|
+[NeuroBench](https://github.com/NeuroBench/neurobench)| | |Hodgkin-Huxley|Spike Timing Dependant Plasticity (STDP)|memFPAA[^1]|
+| | | |Sigma Delta (SDNN)| | |
 
 [^1]: [Memristive Field-Programmable Analog Arrays for Analog Computing](https://advanced.onlinelibrary.wiley.com/doi/full/10.1002/adma.202206648)
 
@@ -72,6 +72,8 @@ From these I hope to form a view on:
 - Non-standard models which can currently outperform existing standard models.
 - Models which are best at task Y (cartpole, ant, etc.).
 - etc.
+
+An overarching theme guiding my work is "Can SNNs perform online learning to adapt to degradation?".
 
 ### Misc
 
