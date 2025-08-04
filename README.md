@@ -44,18 +44,36 @@ poetry run pytest .\tests\test_against_snntorch.py::test_against_snntorch -s
 
 ## TODOs
 
-The below table lists all the dimensions I am looking at testing across, for practical concerns I
-wouldn't be testing the cartesian product of all combinations but I will try and do as many as I can.
+The below table lists the experimental dimensions I am looking at testing across, for practical
+concerns I wouldn't be testing the cartesian product of all combinations but I will try and do a
+large number while prioritizing the most important combinations.
 
 Benchmark|Synapses|Architectures|Neurons|Optimizers|Hardware|Noise
 ---|---|---|---|---|---|---
 [N-MNIST](https://www.garrickorchard.com/datasets/n-mnist)|Linear|Feed forward|Leaky Integrate and Fire (LIF)|Backpropagation through time (BPTT)|CPU|None
-[ST-MNIST](https://hh-see.com/projects/2_project/)|Convolutional|Reservoir|Adaptive LIF|SpikeProp|GPU|Random
-[Isaac-Cartpole-v0](https://isaac-sim.github.io/IsaacLab/main/source/overview/environments.html)| | |Resonate and fire|SuperSpike|TPU|Adverserial
-[Isaac-Ant-v0](https://isaac-sim.github.io/IsaacLab/main/source/overview/environments.html)| | |Quadratic LIF|SLAYER|FPGA|
+[ST-MNIST](https://hh-see.com/projects/2_project/)|Convolutional|Reservoir|Adaptive LIF|SpikeProp|GPU|Static
+[Isaac-Cartpole-v0](https://isaac-sim.github.io/IsaacLab/main/source/overview/environments.html)| | |Resonate and fire|SuperSpike|TPU|Dynamic
+[Isaac-Ant-v0](https://isaac-sim.github.io/IsaacLab/main/source/overview/environments.html)| | |Quadratic LIF|SLAYER|FPGA|Adverserial
 [Isaac-Humanoid-v0](https://isaac-sim.github.io/IsaacLab/main/source/overview/environments.html)| | |Izhikevich|EventProp|FPAA|
 [NeuroBench](https://github.com/NeuroBench/neurobench)| | |Hodgkin-Huxley|Spike Timing Dependant Plasticity (STDP)|memFPAA[^1]|
 | | | |Sigma Delta (SDNN)| | |
+
+### Noise
+
+- **Static noise** might be a normal distribution
+with a set mean and deviation; this might repre-
+sent a sensor having a given degree of inaccuracy.
+- **Dynamic noise** might be a normal distribution
+with a changing mean and deviation; this might
+represent a sensor degrading over time, becom-
+ing progressively less accurate.
+- **Adverserial noise** might be an SNN which
+knows the ground truth and slightly changes the
+value within some range; this might represent an
+intelligent electronic warfare system attempting
+to degrade the system.
+
+### Summary
 
 [^1]: [Memristive Field-Programmable Analog Arrays for Analog Computing](https://advanced.onlinelibrary.wiley.com/doi/full/10.1002/adma.202206648)
 
