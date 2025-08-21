@@ -20,6 +20,10 @@ This package is not published yet.
 1. Python >=3.13
 1. [Poetry](https://python-poetry.org/)
 
+Different models will require different simulators.
+
+- For simple SNNs you will need [cuDNN](https://docs.nvidia.com/deeplearning/cudnn/latest/).
+
 ### Development Installation
 
 1. Install dependencies
@@ -98,7 +102,7 @@ I'm thinking I will define models and their training declaratively and then impl
 ### Misc
 
 - re-write to lower level `cuDNN` to avoid `CuPy`s bad documentation (for `cupy.cudnn`) and worse performance.
-  The aim should be to acheive similat performance to snnTorch in n-mnist classification.
+  The aim should be to acheive similar performance to snnTorch in n-mnist classification.
 - add GitHub action that runs black, pyright, pytest and pdoc (for pdoc it should also post the github page in the action)
 - run `snnTorch` to compare and improve until reaching similar performance for n-mnist and st-mnist.
 - output the EFLOPs metrics for models to give an idea of their foundational performance.
