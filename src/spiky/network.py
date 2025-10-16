@@ -173,8 +173,10 @@ class FeedForwardLayer:
     """The values of the neurons in this layer"""
     synapses: Linear | Convolutional
     """The type of the synapses connecting into this layer"""
-    synapse_values: NDArray[float32]  # The weights
-    """The synapse values of neurons in this layer."""
+    synapse_weights: NDArray[float32]  # The weights
+    """The synapse weights of neurons in this layer."""
+    synapse_biases: NDArray[float32]  # The biases
+    """The synapse biases of neurons in this layer."""
     spike_values: NDArray[float32]
     """The spike values of neurons in this layer"""
     weighted_input_values: NDArray[float32]
@@ -195,11 +197,14 @@ class FeedForwardLayer:
         self.neurons = neurons
         self.synapses = synapses
 
+        # `synapses.outputs` here is the number of neurons in this layer.
+        # `samples` is the batch size.
+        # `features` is the number of incoming neurons.
         if isinstance(synapses, Linear):
             match incoming_neurons:
                 case (samples, features):
                     self.neuron_values = np.zeros((samples, synapses.outputs), float32)
-                    self.synapse_values = np.zeros(
+                    self.synapse_weights = np.zeros(
                         (features, synapses.outputs), float32
                     )
                     self.spike_values = np.zeros((samples, synapses.outputs), float32)
@@ -232,7 +237,7 @@ class FeedForwardLayer:
                     self.neuron_values = np.zeros(
                         (samples, out_h, out_w, synapses.out_channels), float32
                     )
-                    self.synapse_values = np.zeros(
+                    self.synapse_weights = np.zeros(
                         (synapses.out_channels, channels, kernel_h, kernel_w), float32
                     )
                     self.spike_values = np.zeros(
@@ -262,7 +267,7 @@ class FeedForwardLayer:
             match len(inputs.shape):
                 case 2:  # [samples, features]
                     np.matmul(
-                        inputs, self.synapse_values, out=self.weighted_input_values
+                        inputs, self.synapse_weights, out=self.weighted_input_values
                     )
                     if weighted_input_values is not None:
                         np.copyto(
@@ -273,7 +278,7 @@ class FeedForwardLayer:
         else:
             assert isinstance(self.synapses, Convolutional)
             self.weighted_input_values = conv2d_numpy(
-                inputs, self.synapse_values, stride=self.synapses.stride
+                inputs, self.synapse_weights, stride=self.synapses.stride
             )
 
             if weighted_input_values is not None:
@@ -363,7 +368,7 @@ class BackpropagationThroughTime:
             for layer in network.layers
         ]
         self.delta_weights = [
-            np.zeros(layer.synapse_values.shape, dtype=float32)
+            np.zeros(layer.synapse_weights.shape, dtype=float32)
             for layer in network.layers
         ]
         self.backed = False
@@ -555,7 +560,7 @@ class BackpropagationThroughTime:
 
             # Calculate input gradients for previous layer
             return self.__conv2d_backward_input(
-                weight=ol.synapse_values,
+                weight=ol.synapse_weights,
                 errors=self.errors[oli],
                 input_shape=self.network.layers[oli - 1].neuron_values.shape,
                 stride=ol.synapses.stride,
@@ -576,11 +581,11 @@ class BackpropagationThroughTime:
 
         # Calculate the error for this layer
         if isinstance(after_layer.synapses, Linear):
-            self.errors[li] = np.matmul(delta_next, after_layer.synapse_values.T)
+            self.errors[li] = np.matmul(delta_next, after_layer.synapse_weights.T)
         else:
             assert isinstance(after_layer.synapses, Convolutional)
             self.errors[li] = self.__conv2d_backward_input(
-                weight=after_layer.synapse_values,
+                weight=after_layer.synapse_weights,
                 errors=delta_next,
                 input_shape=layer.neuron_values.shape,
                 stride=after_layer.synapses.stride,
@@ -622,11 +627,11 @@ class BackpropagationThroughTime:
         gradient = self.__surrogate(input_layer.neurons, weighted_input_values[0])
 
         if isinstance(first_hidden_layer.synapses, Linear):
-            self.errors = np.matmul(delta_next, first_hidden_layer.synapse_values.T)
+            self.errors = np.matmul(delta_next, first_hidden_layer.synapse_weights.T)
         else:
             assert isinstance(first_hidden_layer.synapses, Convolutional)
             self.errors[0] = self.__conv2d_backward_input(
-                weight=first_hidden_layer.synapse_values,
+                weight=first_hidden_layer.synapse_weights,
                 errors=delta_next,
                 input_shape=input_layer.neuron_values.shape,
                 stride=first_hidden_layer.synapses.stride,
@@ -728,7 +733,7 @@ class BackpropagationThroughTime:
     def update(self, learning_rate: float32):
         """Updates the weights in the network"""
         for layer, delta_weights in zip(self.network.layers, self.delta_weights):
-            layer.synapse_values -= (
+            layer.synapse_weights -= (
                 learning_rate * delta_weights / float32(self.number_backed)
             )
 

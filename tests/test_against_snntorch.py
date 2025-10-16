@@ -29,10 +29,10 @@ def test_against_snntorch():
     )
 
     # Extract and store constant weights/biases
-    model_parameters = {}
+    snn_parameters = {}
     for name, param in snn_net.named_parameters():  # type: ignore
-        model_parameters[name] = param.data.numpy()  # type: ignore
-    print("model_parameters:", model_parameters)  # type:ignore
+        snn_parameters[name] = param.data.numpy()  # type: ignore
+    print("snn_parameters:", snn_parameters)  # type:ignore
 
     # Simulation remains unchanged
     data_in = [
@@ -60,11 +60,19 @@ def test_against_snntorch():
     )
 
     # todo set the biases on spiky net
+    spiky_parameters = []
     for i in range(len(size) - 1):
-        spiky_net.layers[i].synapse_values = model_parameters[f"{2 * i}.weight"]
+        # snn torch seems to only use even weight parameter names.
+        param = snn_parameters[f"{2 * i}.weight"].T  # type: ignore
+        assert spiky_net.layers[i].synapse_values.shape == param.shape  # type:ignore
+        spiky_net.layers[i].synapse_values = param
+        spiky_parameters.append(spiky_net.layers[i].synapse_values)  # type:ignore
+    print("spiky_parameters:", spiky_parameters)  # type:ignore
+    assert snn_parameters == spiky_parameters
 
     spiky_spike_recording = []
     for data in data_in:
         spike = spiky_net.forward(data)
         spiky_spike_recording.append(spike)  # type:ignore
     print("spiky_spike_recording:", spiky_spike_recording)  # type:ignore
+    assert snn_spike_recording == spiky_spike_recording
