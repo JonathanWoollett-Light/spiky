@@ -5,6 +5,7 @@ from snntorch import surrogate
 from snntorch import utils
 import spiky.network as sn
 import numpy as np
+from numpy.typing import NDArray
 
 
 # type: ignore
@@ -14,6 +15,7 @@ def test_against_snntorch():
 
     input_size = 8
     size = [input_size, 6, 4, 2]
+    depth = len(size) - 1
     num_steps = 25
     batch_size = 3
     beta = 0.5  # The "decay" factor.
@@ -30,9 +32,11 @@ def test_against_snntorch():
 
     # Extract and store constant weights/biases
     snn_parameters = {}
-    for name, param in snn_net.named_parameters():  # type: ignore
-        snn_parameters[name] = param.data.numpy()  # type: ignore
+    for name, param in snn_net.state_dict().items(): # type: ignore
+        print("params: ", name)
+        snn_parameters[name] = param.numpy() # type: ignore
     print("snn_parameters:", snn_parameters)  # type:ignore
+
 
     # Simulation remains unchanged
     data_in = [
@@ -58,17 +62,25 @@ def test_against_snntorch():
             (sn.Linear(size[3]), spiky_neuron),
         ],
     )
+    
+    i = 0
+    weights: list[NDArray[np.float32]] = []
+    biases: list[NDArray[np.float32]] = []
+    while True:
+        if not (f"{i}.weight" in snn_parameters):
+            assert not (f"{i}.bias" in snn_parameters)
+            break
+        weights.append(snn_parameters[f"{i}.weight"]) # type: ignore
+        biases.append(snn_parameters[f"{i}.bias"]) # type: ignore
+        i += 1
+    assert len(weights) == depth
+    assert len(biases) == depth
 
-    # todo set the biases on spiky net
-    spiky_parameters = []
-    for i in range(len(size) - 1):
-        # snn torch seems to only use even weight parameter names.
-        param = snn_parameters[f"{2 * i}.weight"].T  # type: ignore
-        assert spiky_net.layers[i].synapse_values.shape == param.shape  # type:ignore
-        spiky_net.layers[i].synapse_values = param
-        spiky_parameters.append(spiky_net.layers[i].synapse_values)  # type:ignore
-    print("spiky_parameters:", spiky_parameters)  # type:ignore
-    assert snn_parameters == spiky_parameters
+    for i in range(depth):
+        assert spiky_net.layers[i].synapse_weights.shape == weights[i].T.shape  # type:ignore
+        assert spiky_net.layers[i].synapse_biases.shape == biases[i].T.shape  # type:ignore
+        spiky_net.layers[i].synapse_weights = weights[i].T
+        spiky_net.layers[i].synapse_biases = biases[i].T
 
     spiky_spike_recording = []
     for data in data_in:

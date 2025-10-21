@@ -207,6 +207,7 @@ class FeedForwardLayer:
                     self.synapse_weights = np.zeros(
                         (features, synapses.outputs), float32
                     )
+                    self.synapse_biases = np.zeros((synapses.outputs,), float32)
                     self.spike_values = np.zeros((samples, synapses.outputs), float32)
                     self.weighted_input_values = np.zeros(
                         (samples, synapses.outputs), float32
@@ -269,6 +270,8 @@ class FeedForwardLayer:
                     np.matmul(
                         inputs, self.synapse_weights, out=self.weighted_input_values
                     )
+                    # Add biases (broadcasting across batch dimension)
+                    self.weighted_input_values += self.synapse_biases
                     if weighted_input_values is not None:
                         np.copyto(
                             dst=weighted_input_values, src=self.weighted_input_values
@@ -280,6 +283,8 @@ class FeedForwardLayer:
             self.weighted_input_values = conv2d_numpy(
                 inputs, self.synapse_weights, stride=self.synapses.stride
             )
+            # Add biases (broadcasting across batch, height, width dimensions)
+            self.weighted_input_values += self.synapse_biases
 
             if weighted_input_values is not None:
                 np.copyto(weighted_input_values, self.weighted_input_values)
@@ -352,6 +357,8 @@ class BackpropagationThroughTime:
     """The spikes for each timestep for each layer"""
     delta_weights: list[NDArray[float32]]
     """Change in weights for each layer"""
+    delta_biases: list[NDArray[float32]]
+    """Change in biases for each layer"""
     errors: list[NDArray[float32]]
     """Errors in spikes for each layer"""
     inputs: list[NDArray[float32]]
@@ -369,6 +376,10 @@ class BackpropagationThroughTime:
         ]
         self.delta_weights = [
             np.zeros(layer.synapse_weights.shape, dtype=float32)
+            for layer in network.layers
+        ]
+        self.delta_biases = [
+            np.zeros(layer.synapse_biases.shape, dtype=float32)
             for layer in network.layers
         ]
         self.backed = False
@@ -546,6 +557,12 @@ class BackpropagationThroughTime:
                 trans_a=True,
                 beta=beta,
             )
+            # Bias gradient is sum of errors across batch dimension
+            bias_gradient = np.sum(self.errors[oli], axis=0)
+            if beta == 0.0:
+                np.copyto(self.delta_biases[oli], bias_gradient)
+            else:
+                self.delta_biases[oli] += bias_gradient
             return self.errors[oli]
         else:
             assert isinstance(ol.synapses, Convolutional)
@@ -557,6 +574,12 @@ class BackpropagationThroughTime:
                 stride=ol.synapses.stride,
                 beta=beta,
             )
+            # Bias gradient is sum of errors across batch, height, and width dimensions
+            bias_gradient = np.sum(self.errors[oli], axis=(0, 1, 2))
+            if beta == 0.0:
+                np.copyto(self.delta_biases[oli], bias_gradient)
+            else:
+                self.delta_biases[oli] += bias_gradient
 
             # Calculate input gradients for previous layer
             return self.__conv2d_backward_input(
@@ -602,6 +625,12 @@ class BackpropagationThroughTime:
                 trans_a=True,
                 beta=beta,
             )
+            # Bias gradient is sum of errors across batch dimension
+            bias_gradient = np.sum(self.errors[li], axis=0)
+            if beta == 0.0:
+                np.copyto(self.delta_biases[li], bias_gradient)
+            else:
+                self.delta_biases[li] += bias_gradient
         else:
             assert isinstance(layer.synapses, Convolutional)
             self.__conv2d_backward_weight(
@@ -611,6 +640,12 @@ class BackpropagationThroughTime:
                 stride=layer.synapses.stride,
                 beta=beta,
             )
+            # Bias gradient is sum of errors across batch, height, and width dimensions
+            bias_gradient = np.sum(self.errors[li], axis=(0, 1, 2))
+            if beta == 0.0:
+                np.copyto(self.delta_biases[li], bias_gradient)
+            else:
+                self.delta_biases[li] += bias_gradient
 
         return self.errors[li]
 
@@ -647,6 +682,12 @@ class BackpropagationThroughTime:
                 trans_a=True,
                 beta=beta,
             )
+            # Bias gradient is sum of errors across batch dimension
+            bias_gradient = np.sum(self.errors[0], axis=0)
+            if beta == 0.0:
+                np.copyto(self.delta_biases[0], bias_gradient)
+            else:
+                self.delta_biases[0] += bias_gradient
         else:
             assert isinstance(input_layer.synapses, Convolutional)
             self.__conv2d_backward_weight(
@@ -656,6 +697,12 @@ class BackpropagationThroughTime:
                 stride=input_layer.synapses.stride,
                 beta=beta,
             )
+            # Bias gradient is sum of errors across batch, height, and width dimensions
+            bias_gradient = np.sum(self.errors[0], axis=(0, 1, 2))
+            if beta == 0.0:
+                np.copyto(self.delta_biases[0], bias_gradient)
+            else:
+                self.delta_biases[0] += bias_gradient
 
     def backward(self, targets: list[NDArray[float32]]):
         """
@@ -731,10 +778,15 @@ class BackpropagationThroughTime:
             self.backed = True
 
     def update(self, learning_rate: float32):
-        """Updates the weights in the network"""
-        for layer, delta_weights in zip(self.network.layers, self.delta_weights):
+        """Updates the weights and biases in the network"""
+        for layer, delta_weights, delta_biases in zip(
+            self.network.layers, self.delta_weights, self.delta_biases
+        ):
             layer.synapse_weights -= (
                 learning_rate * delta_weights / float32(self.number_backed)
+            )
+            layer.synapse_biases -= (
+                learning_rate * delta_biases / float32(self.number_backed)
             )
 
         self.backed = False
