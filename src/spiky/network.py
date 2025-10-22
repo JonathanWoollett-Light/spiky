@@ -82,12 +82,15 @@ class LIF:
         self, weighted_input: NDArray[float32], membrane_potential_in: NDArray[float32]
     ) -> tuple[NDArray[float32], NDArray[float32]]:
         """Numpy implementation of spike update kernel"""
-        spiked = (membrane_potential_in > self.threshold).astype(float32)
-        membrane_potential_out = (
-            weighted_input
-            + self.decay * membrane_potential_in
-            - self.decay * spiked * self.threshold
-        )
+        # Step 1: Compute membrane potential after decay and input
+        membrane_potential_pre = weighted_input + self.decay * membrane_potential_in
+
+        # Step 2: Check if membrane potential exceeds threshold
+        spiked = (membrane_potential_pre > self.threshold).astype(float32)
+
+        # Step 3: Apply reset by subtraction
+        membrane_potential_out = membrane_potential_pre - spiked * self.threshold
+
         return spiked, membrane_potential_out.astype(float32)
 
     def arctan_surrogate_gradient(
@@ -254,15 +257,6 @@ class FeedForwardLayer:
 
     def forward(self, inputs: NDArray[float32]):
         """Passes an input into this layer"""
-        self.record_forward(inputs, None, None)
-
-    def record_forward(
-        self,
-        inputs: NDArray[float32],
-        weighted_input_values: NDArray[float32] | None,
-        spike_values: NDArray[float32] | None,
-    ):
-        """Passes an input into this layer recording data needed for later backpropagation"""
         # Propagate through synapses.
         if isinstance(self.synapses, Linear):
             match len(inputs.shape):
@@ -272,10 +266,6 @@ class FeedForwardLayer:
                     )
                     # Add biases (broadcasting across batch dimension)
                     self.weighted_input_values += self.synapse_biases
-                    if weighted_input_values is not None:
-                        np.copyto(
-                            dst=weighted_input_values, src=self.weighted_input_values
-                        )
                 case _:
                     raise Exception("todo")
         else:
@@ -286,19 +276,13 @@ class FeedForwardLayer:
             # Add biases (broadcasting across batch, height, width dimensions)
             self.weighted_input_values += self.synapse_biases
 
-            if weighted_input_values is not None:
-                np.copyto(weighted_input_values, self.weighted_input_values)
-
         # Propagate into neurons.
         if isinstance(self.neurons, LIF):
-            spikes, new_membrane = self.neurons.spike_update(
+            spikes, membrane = self.neurons.spike_update(
                 self.weighted_input_values, self.neuron_values
             )
             self.spike_values = spikes
-            self.neuron_values = new_membrane
-
-            if spike_values is not None:
-                np.copyto(spike_values, self.spike_values)
+            self.neuron_values = membrane
         else:
             raise Exception("todo")
 
@@ -331,7 +315,7 @@ class FeedForwardNetwork:
         spikes = inputs
         for layer in self.layers:
             layer.forward(spikes)
-            spikes = layer.neuron_values
+            spikes = layer.spike_values
         return spikes
 
 
@@ -406,11 +390,11 @@ class BackpropagationThroughTime:
                 timestep_weighted_input_values,
                 timestep_spike_values,
             ):
-                layer.record_forward(
-                    spikes,
-                    layer_timestep_weighted_input_values,
-                    layer_timestep_spike_values,
+                layer.forward(spikes)
+                np.copyto(
+                    layer_timestep_weighted_input_values, layer.weighted_input_values
                 )
+                np.copyto(layer_timestep_spike_values, layer.spike_values)
                 spikes = layer.spike_values
 
     def __update_cache(self):
