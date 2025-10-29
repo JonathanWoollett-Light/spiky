@@ -86,7 +86,7 @@ class LIF:
         membrane_potential_pre = weighted_input + self.decay * membrane_potential_in
 
         # Step 2: Check if membrane potential exceeds threshold
-        spiked = (membrane_potential_pre > self.threshold).astype(float32)
+        spiked = (membrane_potential_pre >= self.threshold).astype(float32)
 
         # Step 3: Apply reset by subtraction
         membrane_potential_out = membrane_potential_pre - spiked * self.threshold

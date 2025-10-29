@@ -2,5 +2,7 @@
   "python.analysis.typeCheckingMode": "strict",
   "python.analysis.diagnosticSeverityOverrides": {
     "reportMissingTypeStubs": "none"
-  }
+  },
+  "python.testing.pytestEnabled": true,
+  "python.testing.unittestEnabled": false,
 }

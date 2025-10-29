@@ -10,12 +10,12 @@ from numpy.typing import NDArray
 
 # type: ignore
 def test_against_snntorch():
-    # Set fixed seed for reproducibility
-    torch.manual_seed(42)  # Constant seed value # type:ignore
+    # Set fixed seeds for reproducibility
+    torch.manual_seed(42)  # type:ignore
+    np.random.seed(0)
 
     input_size = 8
     size = [input_size, 6, 4, 2]
-    depth = len(size) - 1
     num_steps = 25
     batch_size = 3
     beta = 0.5  # The "decay" factor.
@@ -33,28 +33,12 @@ def test_against_snntorch():
                 beta=beta, init_hidden=True, spike_grad=spike_grad, output=True
             )
 
-        def forward(self, x):  # type:ignore
-            cur1 = self.fc1(x)
-            spk1 = self.lif1(cur1)
-            mem1 = self.lif1.mem  # type:ignore
-
-            cur2 = self.fc2(spk1)
-            spk2 = self.lif2(cur2)
-            mem2 = self.lif2.mem  # type:ignore
-
-            cur3 = self.fc3(spk2)
-            spk3, mem3 = self.lif3(cur3)  # output layer returns both
-
-            return [(spk1, mem1), (spk2, mem2), (spk3, mem3)]  # type:ignore
-
     snn_net = SNNTorchNet()
 
     # Extract and store constant weights/biases
     snn_parameters = {}
     for name, param in snn_net.state_dict().items():  # type: ignore
-        print("params: ", name)
         snn_parameters[name] = param.numpy()  # type: ignore
-    print("snn_parameters:", snn_parameters)  # type:ignore
 
     spiky_neuron = sn.LIF(np.float32(beta))
     spiky_net = sn.FeedForwardNetwork(
@@ -87,50 +71,81 @@ def test_against_snntorch():
     utils.reset(snn_net)  # type: ignore
     # Run simulation and validate both spikes and membrane potentials
     for step, data in enumerate(data_in):
-        # SNNTorch forward pass
-        # When output=True, SNNTorch returns (spikes, membrane_potential)
-        snn_outputs = snn_net(torch.from_numpy(data))  # type:ignore
+        print(f"Timestep {step}")
+        print(f"Layer 1")
 
-        # Spiky forward pass - returns spikes
-        spiky_outputs = []
-        spikes = data
-        for layer in spiky_net.layers:
-            layer.forward(spikes)
-            spiky_outputs.append(
-                [layer.spike_values.copy(), layer.neuron_values.copy()]
-            )  # type:ignore
-            spikes = layer.spike_values.copy()
+        # Layer 1 - SNNTorch
+        snn_1_in = snn_net.fc1(torch.from_numpy(data))  # type:ignore
+        snn_1_spikes = snn_net.lif1(snn_1_in)
+        snn_1_mem = snn_net.lif1.mem  # type:ignore
 
-        print(f"\n=== Timestep {step} ===")
+        # Layer 1 - Spiky
+        spiky_net.layers[0].forward(data)
+        spiky_1_spikes = spiky_net.layers[0].spike_values.copy()
+        spiky_1_mem = spiky_net.layers[0].neuron_values.copy()
 
-        # Get membrane potentials from each layer in spiky_net
-        for layer_index in range(depth):
-            snn_spike_tensor, snn_mem_tensor = snn_outputs[layer_index]
-            snn_spike = snn_spike_tensor.detach().numpy()
-            snn_mem = snn_mem_tensor.detach().numpy()
+        # SNNTorch applies the threshold reset on the next forward pass, while
+        # spiky applies it immediately after the forward pass which resulted in
+        # the membrane potential breaching the threshold.
+        # As such to compare the values properly we apply the threshold reset
+        # ourselves by simply subtracting the spikes in the comparison.
 
-            spiky_spike, spiky_mem = spiky_outputs[layer_index]  # type:ignore
+        # Compare layer 1
+        snn_1_spikes_np = snn_1_spikes.detach().numpy()
+        snn_1_mem_np = snn_1_mem.detach().numpy() - snn_1_spikes_np  # type:ignore
+        assert np.allclose(
+            snn_1_spikes_np, spiky_1_spikes, rtol=1e-5, atol=1e-6
+        ), f"{snn_1_spikes_np}\n{spiky_1_spikes}"
+        assert np.allclose(
+            snn_1_mem_np, spiky_1_mem, rtol=1e-5, atol=1e-6  # type:ignore
+        ), f"{snn_1_mem_np}\n{spiky_1_mem}"  # type:ignore
 
-            print(f"\nLayer {layer_index}:")
-            print(f"  SNNTorch spikes: {snn_spike}")
-            print(f"  Spiky spikes: {spiky_spike}")
-            print(f"  SNNTorch membrane: {snn_mem-snn_spike}")
-            print(f"  Spiky membrane: {spiky_mem}")
+        print(f"Layer 2")
 
-            # Validate spikes
-            assert np.allclose(
-                snn_spike, spiky_spike, rtol=1e-5, atol=1e-6
-            ), f"Layer {layer_index}, Timestep {step}: Spikes don't match!"
+        # Layer 2 - SNNTorch
+        snn_2_in = snn_net.fc2(snn_1_spikes)
+        snn_2_spikes = snn_net.lif2(snn_2_in)
+        snn_2_mem = snn_net.lif2.mem  # type:ignore
 
-            # Validate membrane potentials
-            # For some reason, SNNTorch doesn't update membrane potential after
-            # a spike, it waits until the next forward pass to apply the
-            # threshold reset. Thus when a spike occurs, spiky will apply the
-            # threshold reset immediately while SNNTorch will not so we need to
-            # consider that here.
-            assert np.allclose(
-                snn_mem - snn_spike, spiky_mem, rtol=1e-5, atol=1e-6
-            ), f"Layer {layer_index}, Timestep {step}: Membrane potentials don't match!"
+        # Layer 2 - Spiky
+        spiky_net.layers[1].forward(spiky_1_spikes)
+        spiky_2_spikes = spiky_net.layers[1].spike_values.copy()
+        spiky_2_mem = spiky_net.layers[1].neuron_values.copy()
 
-    print("\n=== All timesteps passed! ===")
-    print("Both spikes and membrane potentials match between SNNTorch and Spiky.")
+        # Compare layer 2
+        snn_2_spikes_np = snn_2_spikes.detach().numpy()
+        snn_2_mem_np = snn_2_mem.detach().numpy() - snn_2_spikes_np  # type:ignore
+        assert np.allclose(
+            snn_2_spikes_np, spiky_2_spikes, rtol=1e-5, atol=1e-6
+        ), f"{snn_2_spikes_np}\n{spiky_2_spikes}"
+        assert np.allclose(
+            snn_2_mem_np, spiky_2_mem, rtol=1e-5, atol=1e-6  # type:ignore
+        ), f"{snn_2_mem_np}\n{spiky_2_mem}"  # type:ignore
+
+        print(f"Layer 3")
+
+        # Layer 3 - SNNTorch
+        snn_3_in = snn_net.fc3(snn_2_spikes)
+        snn_3_spikes, snn_3_mem = snn_net.lif3(snn_3_in)
+        snn_3_mem_inner = snn_net.lif3.mem  # type:ignore
+        assert np.allclose(
+            snn_3_mem.detach().numpy(),
+            snn_3_mem_inner.detach().numpy(),  # type:ignore
+            rtol=1e-5,
+            atol=1e-6,
+        )  # type:ignore
+
+        # Layer 3 - Spiky
+        spiky_net.layers[2].forward(spiky_2_spikes)
+        spiky_3_spikes = spiky_net.layers[2].spike_values.copy()
+        spiky_3_mem = spiky_net.layers[2].neuron_values.copy()
+
+        # Compare layer 3
+        snn_3_spikes_np = snn_3_spikes.detach().numpy()
+        snn_3_mem_np = snn_3_mem.detach().numpy() - snn_3_spikes_np
+        assert np.allclose(
+            snn_3_spikes_np, spiky_3_spikes, rtol=1e-5, atol=1e-6
+        ), f"{snn_3_spikes_np}\n{spiky_3_spikes}"
+        assert np.allclose(
+            snn_3_mem_np, spiky_3_mem, rtol=1e-5, atol=1e-6
+        ), f"{snn_3_mem_np}\n{spiky_3_mem}"  # type:ignore
