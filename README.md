@@ -28,11 +28,21 @@ This package is not published yet.
    poetry install
    ```
 
-1. Install PyTorch within the environment e.g.
+1. Install PyTorch within the environment.
+
+   For GPU:
 
    ```bash
    poetry run pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
    ```
+
+   For CPU:
+
+   ```bash
+   poetry run pip install torch torchvision
+   ```
+
+   etc.
 
 ### Testing
 
