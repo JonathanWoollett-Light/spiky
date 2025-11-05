@@ -32,15 +32,19 @@ def test_against_snntorch():
             super().__init__()  # type:ignore
             self.fc1 = nn.Linear(size[0], size[1])  # type:ignore
             self.lif1 = snn.Leaky(  # type:ignore
-                beta=beta, init_hidden=True, spike_grad=spike_grad
+                beta=beta, init_hidden=True, spike_grad=spike_grad, reset_delay=False
             )
             self.fc2 = nn.Linear(size[1], size[2])  # type:ignore
             self.lif2 = snn.Leaky(  # type:ignore
-                beta=beta, init_hidden=True, spike_grad=spike_grad
+                beta=beta, init_hidden=True, spike_grad=spike_grad, reset_delay=False
             )
             self.fc3 = nn.Linear(size[2], size[3])  # type:ignore
             self.lif3 = snn.Leaky(  # type:ignore
-                beta=beta, init_hidden=True, spike_grad=spike_grad, output=True
+                beta=beta,
+                init_hidden=True,
+                spike_grad=spike_grad,
+                reset_delay=False,
+                output=True,
             )
 
     snn_net = SNNTorchNet()
@@ -91,7 +95,7 @@ def test_against_snntorch():
         snn_1_mem = snn_net.lif1.mem  # type:ignore
         snn_1_in_np = tnp(snn_1_in)  # type:ignore
         snn_1_spikes_np = tnp(snn_1_spikes)  # type:ignore
-        snn_1_mem_np = tnp(snn_1_mem) - snn_1_spikes_np  # type:ignore
+        snn_1_mem_np = tnp(snn_1_mem)  # type:ignore
 
         # Layer 1 - Spiky
         spiky_net.layers[0].forward(data)
@@ -124,7 +128,7 @@ def test_against_snntorch():
         snn_2_mem = snn_net.lif2.mem  # type:ignore
         snn_2_in_np = tnp(snn_2_in)  # type:ignore
         snn_2_spikes_np = tnp(snn_2_spikes)  # type:ignore
-        snn_2_mem_np = tnp(snn_2_mem) - snn_2_spikes_np  # type:ignore
+        snn_2_mem_np = tnp(snn_2_mem)  # type:ignore
 
         # Layer 2 - Spiky
         spiky_net.layers[1].forward(spiky_1_spikes)
@@ -151,7 +155,7 @@ def test_against_snntorch():
         snn_3_mem_inner = snn_net.lif3.mem  # type:ignore
         snn_3_in_np = tnp(snn_3_in)  # type:ignore
         snn_3_spikes_np = tnp(snn_3_spikes)  # type:ignore
-        snn_3_mem_np = tnp(snn_3_mem) - snn_3_spikes_np  # type:ignore
+        snn_3_mem_np = tnp(snn_3_mem)  # type:ignore
 
         # Check that the output membrane potential is the same as the stored membrane potential.
         assert np.allclose(
