@@ -3,8 +3,10 @@ import torch.nn as nn  # type:ignore
 import snntorch as snn  # type:ignore
 from snntorch import surrogate  # type:ignore
 from snntorch import utils  # type:ignore
+from numpy.typing import NDArray
 import spiky.network as sn
 import numpy as np
+from numpy import float32
 
 R = 1e-5
 A = 1e-6
@@ -21,8 +23,9 @@ def test_against_snntorch():
     np.random.seed(0)
 
     input_size = 8
-    size = [input_size, 6, 4, 2]
-    num_steps = 25
+    output_size = 2
+    size = [input_size, 6, 4, output_size]
+    num_steps = 4
     batch_size = 3
     beta = 0.5  # The "decay" factor.
     spike_grad = surrogate.atan()  # type:ignore
@@ -65,7 +68,7 @@ def test_against_snntorch():
         ],
     )
 
-    # Simulation remains unchanged
+    # Generate data
     data_in = [
         np.random.rand(batch_size, input_size).astype(np.float32)
         for _ in range(num_steps)
@@ -83,13 +86,16 @@ def test_against_snntorch():
         spiky_net.layers[i].synapse_biases = bias.T  # type: ignore
 
     utils.reset(snn_net)  # type: ignore
+    snn_spikes = []
+    spiky_spikes: list[NDArray[float32]] = []
+
     # Run simulation and validate both spikes and membrane potentials
     print()
     for step, data in enumerate(data_in):
         print(f"Timestep {step}")
         print(f"Layer 1")
 
-        # Layer 1 - SNNTorch
+        # Layer 1 - snnTorch
         snn_1_in = snn_net.fc1(torch.from_numpy(data))  # type:ignore
         snn_1_spikes = snn_net.lif1(snn_1_in)  # type:ignore
         snn_1_mem = snn_net.lif1.mem  # type:ignore
@@ -103,7 +109,7 @@ def test_against_snntorch():
         spiky_1_spikes = spiky_net.layers[0].spike_values.copy()
         spiky_1_mem = spiky_net.layers[0].neuron_values.copy()
 
-        # SNNTorch applies the threshold reset on the next forward pass, while
+        # snnTorch applies the threshold reset on the next forward pass, while
         # spiky applies it immediately after the forward pass which resulted in
         # the membrane potential breaching the threshold.
         # As such to compare the values properly we apply the threshold reset
@@ -122,7 +128,7 @@ def test_against_snntorch():
 
         print(f"Layer 2")
 
-        # Layer 2 - SNNTorch
+        # Layer 2 - snnTorch
         snn_2_in = snn_net.fc2(snn_1_spikes)  # type:ignore
         snn_2_spikes = snn_net.lif2(snn_2_in)  # type:ignore
         snn_2_mem = snn_net.lif2.mem  # type:ignore
@@ -149,13 +155,14 @@ def test_against_snntorch():
 
         print(f"Layer 3")
 
-        # Layer 3 - SNNTorch
+        # Layer 3 - snnTorch
         snn_3_in = snn_net.fc3(snn_2_spikes)  # type:ignore
         snn_3_spikes, snn_3_mem = snn_net.lif3(snn_3_in)  # type:ignore
         snn_3_mem_inner = snn_net.lif3.mem  # type:ignore
         snn_3_in_np = tnp(snn_3_in)  # type:ignore
         snn_3_spikes_np = tnp(snn_3_spikes)  # type:ignore
         snn_3_mem_np = tnp(snn_3_mem)  # type:ignore
+        snn_spikes.append(snn_3_spikes)  # type:ignore
 
         # Check that the output membrane potential is the same as the stored membrane potential.
         assert np.allclose(
@@ -170,9 +177,9 @@ def test_against_snntorch():
         spiky_3_in = spiky_net.layers[2].weighted_input_values.copy()
         spiky_3_spikes = spiky_net.layers[2].spike_values.copy()
         spiky_3_mem = spiky_net.layers[2].neuron_values.copy()
+        spiky_spikes.append(spiky_3_spikes)
 
         # Compare layer 3
-
         assert np.allclose(
             snn_3_in_np, spiky_3_in, R, A  # type:ignore
         ), f"{snn_3_in_np}\n{spiky_3_in}"

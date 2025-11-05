@@ -374,7 +374,7 @@ class BackpropagationThroughTime:
 
     def forward(self, inputs: list[NDArray[float32]]):
         """Performs and records the forward propagation of `inputs` through the network"""
-        self.inputs = inputs
+        self.inputs += inputs
         self.__update_cache()
 
         for input_data, timestep_weighted_input_values, timestep_spike_values in zip(
@@ -398,7 +398,7 @@ class BackpropagationThroughTime:
                 spikes = layer.spike_values
 
     def __update_cache(self):
-        """Since a user can module how many forward timesteps they want, we may need to extend the number of arrays we keep cached"""
+        """Since a user can change how many forward timesteps they want, we may need to extend the number of arrays we keep cached"""
         timesteps = len(self.inputs)
 
         while len(self.weighted_input_values) < timesteps:
@@ -529,8 +529,12 @@ class BackpropagationThroughTime:
         oli = number_of_layers - 1
         ol = self.network.layers[oli]
 
+        # Calculate output gradients using MSE loss
         output_gradients = self.__surrogate(ol.neurons, weighted_input_values[oli])
-        self.errors[oli] = (spike_values[oli] - target) * output_gradients
+        self.errors[oli] = (
+            np.mean((spike_values[oli] - target) ** float32(2)).astype(float32)
+            * output_gradients
+        )
 
         if isinstance(ol.synapses, Linear):
             # Linear layer weight update
@@ -646,7 +650,7 @@ class BackpropagationThroughTime:
         gradient = self.__surrogate(input_layer.neurons, weighted_input_values[0])
 
         if isinstance(first_hidden_layer.synapses, Linear):
-            self.errors = np.matmul(delta_next, first_hidden_layer.synapse_weights.T)
+            self.errors[0] = np.matmul(delta_next, first_hidden_layer.synapse_weights.T)
         else:
             assert isinstance(first_hidden_layer.synapses, Convolutional)
             self.errors[0] = self.__conv2d_backward_input(
@@ -705,18 +709,21 @@ class BackpropagationThroughTime:
         Valid code might look like:
 
         ```python
+        # len(inputs) == len(targets) == timesteps
+        # inputs[:].shape == targets[:].shape == [samples x feature dimensions...]
         train = BackpropagationThroughTime(/* .. */)
-        train.forward(inputs[0][0:4])
-        train.backward(targets[0][3:4])
-        train.backward(targets[0][0:3])
-        train.forward(inputs[0][4:8])
-        train.backward(targets[0][4:8])
+        train.forward(inputs[0:4])
+        train.backward(targets[3:4])
+        train.backward(targets[0:3])
+        train.forward(inputs[4:8])
+        train.backward(targets[4:8])
         train.update()
-        train.forward(inputs[1][0:8])
-        train.backward(targets[1][0:8])
+        train.forward(inputs[0:7])
+        train.forward(inputs[7])
+        train.backward(targets[0:8])
         train.update()
-        train.forward(inputs[2][0:8])
-        train.backward(targets[2][4:8])
+        train.forward(inputs[0:8])
+        train.backward(targets[4:8])
         train.update()
         ```
         """
