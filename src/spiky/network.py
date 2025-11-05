@@ -531,10 +531,7 @@ class BackpropagationThroughTime:
 
         # Calculate output gradients using MSE loss
         output_gradients = self.__surrogate(ol.neurons, weighted_input_values[oli])
-        self.errors[oli] = (
-            np.mean((spike_values[oli] - target) ** float32(2)).astype(float32)
-            * output_gradients
-        )
+        self.errors[oli] = float32(2) * (spike_values[oli] - target) * output_gradients
 
         if isinstance(ol.synapses, Linear):
             # Linear layer weight update

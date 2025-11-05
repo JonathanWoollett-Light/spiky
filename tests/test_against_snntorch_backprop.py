@@ -126,8 +126,15 @@ def test_against_snntorch():
         if param.grad is not None:  # type:ignore
             snn_gradients[name] = param.grad.clone().detach().numpy()  # type:ignore
             print(
-                f"SNNTorch {name} grad norm: {np.linalg.norm(snn_gradients[name]):.6f}"  # type:ignore
+                f"\n{name}: {snn_gradients[name]}"  # type:ignore
             )
 
     # Backward pass - Spiky
     spiky_trainer.backward(targets)
+
+    print(f"\ndelta_weights[0]: {spiky_trainer.delta_weights[0]}")
+    print(f"\ndelta_biases[0]: {spiky_trainer.delta_biases[0]}")
+    print(f"\ndelta_weights[1]: {spiky_trainer.delta_weights[1]}")
+    print(f"\ndelta_biases[1]: {spiky_trainer.delta_biases[1]}")
+    print(f"\ndelta_weights[2]: {spiky_trainer.delta_weights[2]}")
+    print(f"\ndelta_biases[2]: {spiky_trainer.delta_biases[2]}")
