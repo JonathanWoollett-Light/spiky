@@ -49,7 +49,7 @@ This package is not published yet.
 You can run a specific test with (where `-s` avoids capturing the output):
 
 ```
-poetry run pytest .\tests\test_against_snntorch.py::test_against_snntorch -s
+poetry run pytest .\tests\test_against_snntorch_foreprop.py -s
 ```
 
 ## TODOs
