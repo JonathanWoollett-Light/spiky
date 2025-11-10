@@ -99,12 +99,11 @@ def test_against_snntorch():
         spiky_net.layers[i].synapse_biases = bias.T  # type: ignore
 
     utils.reset(snn_net)  # type: ignore
-    snn_spikes = []
 
     # Forward pass - snnTorch
     snn_spikes = []  # type:ignore
     for data in data_in:
-        spikes, membrane = snn_net.forward(torch.from_numpy(data))  # type: ignore
+        spikes, _membrane = snn_net.forward(torch.from_numpy(data))  # type: ignore
         snn_spikes.append(spikes)  # type:ignore
 
     # Forward pass - Spiky
