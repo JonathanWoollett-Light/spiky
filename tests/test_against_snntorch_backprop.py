@@ -123,7 +123,9 @@ def test_against_snntorch():
     snn_gradients = {}
     for name, param in snn_net.named_parameters():  # type:ignore
         if param.grad is not None:  # type:ignore
-            snn_gradients[name] = param.grad.clone().detach().numpy()  # type:ignore
+            snn_gradients[name] = np.transpose(
+                param.grad.clone().detach().numpy() # type:ignore
+            )
             print(
                 f"\n{name}: {snn_gradients[name]}"  # type:ignore
             )
@@ -137,3 +139,22 @@ def test_against_snntorch():
     print(f"\ndelta_biases[1]: {spiky_trainer.delta_biases[1]}")
     print(f"\ndelta_weights[2]: {spiky_trainer.delta_weights[2]}")
     print(f"\ndelta_biases[2]: {spiky_trainer.delta_biases[2]}")
+
+    assert np.allclose(
+        spiky_trainer.delta_biases[0], snn_gradients["fc1.bias"]  # type:ignore
+    ), f"{spiky_trainer.delta_biases[0]}\n{snn_gradients["fc1.bias"]}"  # type:ignore
+    assert np.allclose(
+        spiky_trainer.delta_weights[0], snn_gradients["fc1.weight"]  # type:ignore
+    ), f"{spiky_trainer.delta_weights[0]}\n{snn_gradients["fc1.weight"]}"  # type:ignore
+    assert np.allclose(
+        spiky_trainer.delta_biases[1], snn_gradients["fc2.bias"]  # type:ignore
+    ), f"{spiky_trainer.delta_biases[1]}\n{snn_gradients["fc2.bias"]}"  # type:ignore
+    assert np.allclose(
+        spiky_trainer.delta_weights[1], snn_gradients["fc2.weight"]  # type:ignore
+    ), f"{spiky_trainer.delta_weights[1]}\n{snn_gradients["fc2.weight"]}"  # type:ignore
+    assert np.allclose(
+        spiky_trainer.delta_biases[2], snn_gradients["fc3.bias"]  # type:ignore
+    ), f"{spiky_trainer.delta_biases[2]}\n{snn_gradients["fc3.bias"]}"  # type:ignore
+    assert np.allclose(
+        spiky_trainer.delta_weights[2], snn_gradients["fc3.weight"]  # type:ignore
+    ), f"{spiky_trainer.delta_weights[2]}\n{snn_gradients["fc3.weight"]}"  # type:ignore
