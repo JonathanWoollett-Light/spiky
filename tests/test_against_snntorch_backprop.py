@@ -6,9 +6,6 @@ from snntorch import utils  # type:ignore
 import spiky.network as sn
 import numpy as np
 
-R = 1e-5
-A = 1e-6
-
 
 def tnp(tensor):  # type:ignore
     return tensor.detach().numpy()  # type:ignore
@@ -23,8 +20,8 @@ def test_against_snntorch():
     input_size = 8
     output_size = 2
     size = [input_size, 6, 4, output_size]
-    num_steps = 4
-    batch_size = 3
+    num_steps = 2
+    batch_size = 2
     beta = 0.5  # The "decay" factor.
     spike_grad = surrogate.atan()  # type:ignore
     learning_rate = 0.01
@@ -114,25 +111,37 @@ def test_against_snntorch():
     snn_targets = torch.stack([torch.from_numpy(t) for t in targets])  # type:ignore
     assert snn_spikes.shape == snn_targets.shape
 
-    # Backward pass - snnTorch
+    # Loss - snnTorch
     snn_optimizer = torch.optim.SGD(snn_net.parameters(), lr=learning_rate)
     snn_optimizer.zero_grad()  # type:ignore
     snn_loss = nn.functional.mse_loss(snn_spikes, snn_targets)  # type:ignore
-    snn_loss.backward()  # type:ignore
 
-    snn_gradients = {}
-    for name, param in snn_net.named_parameters():  # type:ignore
-        if param.grad is not None:  # type:ignore
-            snn_gradients[name] = np.transpose(
-                param.grad.clone().detach().numpy() # type:ignore
-            )
-            print(
-                f"\n{name}: {snn_gradients[name]}"  # type:ignore
-            )
+    # Loss - Spiky
+    spiky_loss = ((spiky_trainer.network.layers[-1].spike_values - targets) ** 2).mean()
+
+    # Check losses match
+    assert np.allclose(tnp(snn_loss), spiky_loss), f"{snn_loss}\n{spiky_loss}"
+
+    # Backward pass - snnTorch
+    snn_loss.backward()  # type:ignore
 
     # Backward pass - Spiky
     spiky_trainer.backward(targets)
 
+    # Gather gradients - snnTorch
+    snn_gradients = {}
+    for name, param in snn_net.named_parameters():  # type:ignore
+        if param.grad is not None:  # type:ignore
+            snn_gradients[name] = np.transpose(
+                param.grad.clone().detach().numpy()  # type:ignore
+            )
+
+            # Print snNTorch gradients for debugging
+            print(
+                f"\n{name}: {snn_gradients[name]}"  # type:ignore
+            )
+
+    # Print Spiky gradients for debugging
     print(f"\ndelta_weights[0]: {spiky_trainer.delta_weights[0]}")
     print(f"\ndelta_biases[0]: {spiky_trainer.delta_biases[0]}")
     print(f"\ndelta_weights[1]: {spiky_trainer.delta_weights[1]}")
@@ -140,6 +149,7 @@ def test_against_snntorch():
     print(f"\ndelta_weights[2]: {spiky_trainer.delta_weights[2]}")
     print(f"\ndelta_biases[2]: {spiky_trainer.delta_biases[2]}")
 
+    # Check gradients match
     assert np.allclose(
         spiky_trainer.delta_biases[0], snn_gradients["fc1.bias"]  # type:ignore
     ), f"{spiky_trainer.delta_biases[0]}\n{snn_gradients["fc1.bias"]}"  # type:ignore

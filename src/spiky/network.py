@@ -347,8 +347,8 @@ class BackpropagationThroughTime:
     """Errors in spikes for each layer"""
     inputs: list[NDArray[float32]]
     """Input spikes for each timestep"""
-    backed: bool
-    """If `backward` has been called since last `forward`"""
+    new_ts_batch: bool
+    """If the current timestep batch is new (gradients should be zeroed)"""
     number_backed: int
     """Number of timesteps backpropagated through"""
 
@@ -366,7 +366,7 @@ class BackpropagationThroughTime:
             np.zeros(layer.synapse_biases.shape, dtype=float32)
             for layer in network.layers
         ]
-        self.backed = False
+        self.new_ts_batch = True
         self.weighted_input_values = []
         self.spike_values = []
         self.inputs = []
@@ -374,13 +374,20 @@ class BackpropagationThroughTime:
 
     def forward(self, inputs: list[NDArray[float32]]):
         """Performs and records the forward propagation of `inputs` through the network"""
+        prev_inputs = len(self.inputs)
         self.inputs += inputs
         self.__update_cache()
+        assert len(inputs) <= len(self.weighted_input_values)
+        assert len(inputs) <= len(self.spike_values)
 
+        # Iterate through each timestep
         for input_data, timestep_weighted_input_values, timestep_spike_values in zip(
-            inputs, self.weighted_input_values, self.spike_values
+            inputs,
+            self.weighted_input_values[prev_inputs:],
+            self.spike_values[prev_inputs:],
         ):
             spikes = input_data
+            # Iterate through each layer
             for (
                 layer,
                 layer_timestep_weighted_input_values,
@@ -391,6 +398,8 @@ class BackpropagationThroughTime:
                 timestep_spike_values,
             ):
                 layer.forward(spikes)
+
+                # Store weighted inputs and spikes for this layer at this timestep for backpropagation
                 np.copyto(
                     layer_timestep_weighted_input_values, layer.weighted_input_values
                 )
@@ -398,24 +407,28 @@ class BackpropagationThroughTime:
                 spikes = layer.spike_values
 
     def __update_cache(self):
-        """Since a user can change how many forward timesteps they want, we may need to extend the number of arrays we keep cached"""
+        """
+        Since a user can change how many forward timesteps they want to process
+        at once, we may need to extend the number of arrays we keep cached
+        """
         timesteps = len(self.inputs)
+        assert len(self.weighted_input_values) == len(self.spike_values)
 
-        while len(self.weighted_input_values) < timesteps:
-            self.weighted_input_values.append(
-                [
-                    np.zeros(layer.weighted_input_values.shape, dtype=float32)
-                    for layer in self.network.layers
-                ]
-            )
-
-        while len(self.spike_values) < timesteps:
-            self.spike_values.append(
-                [
-                    np.zeros(layer.spike_values.shape, dtype=float32)
-                    for layer in self.network.layers
-                ]
-            )
+        new = max(timesteps - len(self.weighted_input_values), 0)
+        self.weighted_input_values += [
+            [
+                np.zeros(layer.weighted_input_values.shape, dtype=float32)
+                for layer in self.network.layers
+            ]
+            for _ in range(new)
+        ]
+        self.spike_values += [
+            [
+                np.zeros(layer.spike_values.shape, dtype=float32)
+                for layer in self.network.layers
+            ]
+            for _ in range(new)
+        ]
 
     def __surrogate(
         self, neurons: LIF | Placeholder, membrane_potential: NDArray[float32]
@@ -522,55 +535,56 @@ class BackpropagationThroughTime:
         target: NDArray[float32],
         spike_values: list[NDArray[float32]],
         weighted_input_values: list[NDArray[float32]],
-        beta: float32,
     ) -> NDArray[float32]:
         number_of_layers = len(self.network.layers)
         # output_layer_index
-        oli = number_of_layers - 1
-        ol = self.network.layers[oli]
+        ol = self.network.layers[-1]
 
         # Calculate output gradients using MSE loss
-        output_gradients = self.__surrogate(ol.neurons, weighted_input_values[oli])
-        self.errors[oli] = float32(2) * (spike_values[oli] - target) * output_gradients
+        output_gradients = self.__surrogate(ol.neurons, weighted_input_values[-1])
+
+        # Multiply derivative of MSE by surrogate gradients.
+        mse_der = float32(2) * (spike_values[-1] - target) / target.shape[0]
+        self.errors[-1] = mse_der * output_gradients
 
         if isinstance(ol.synapses, Linear):
             # Linear layer weight update
             gemm(
-                spike_values[oli - 1],
-                self.errors[oli],
-                self.delta_weights[oli],
+                spike_values[-2],
+                self.errors[-1],
+                self.delta_weights[-1],
                 trans_a=True,
-                beta=beta,
+                beta=float32(0) if self.new_ts_batch else float32(1),
             )
             # Bias gradient is sum of errors across batch dimension
-            bias_gradient = np.sum(self.errors[oli], axis=0)
-            if beta == 0.0:
-                np.copyto(self.delta_biases[oli], bias_gradient)
+            bias_gradient = np.sum(self.errors[-1], axis=0)
+            if self.new_ts_batch:
+                np.copyto(self.delta_biases[-1], bias_gradient)
             else:
-                self.delta_biases[oli] += bias_gradient
-            return self.errors[oli]
+                self.delta_biases[-1] += bias_gradient
+            return self.errors[-1]
         else:
             assert isinstance(ol.synapses, Convolutional)
             # Convolutional layer weight update
             self.__conv2d_backward_weight(
-                prev_spikes=spike_values[oli - 1],
-                errors=self.errors[oli],
-                delta_weights=self.delta_weights[oli],
+                prev_spikes=spike_values[-2],
+                errors=self.errors[-1],
+                delta_weights=self.delta_weights[-1],
                 stride=ol.synapses.stride,
-                beta=beta,
+                beta=float32(0) if self.new_ts_batch else float32(1),
             )
             # Bias gradient is sum of errors across batch, height, and width dimensions
-            bias_gradient = np.sum(self.errors[oli], axis=(0, 1, 2))
-            if beta == 0.0:
-                np.copyto(self.delta_biases[oli], bias_gradient)
+            bias_gradient = np.sum(self.errors[-1], axis=(0, 1, 2))
+            if self.new_ts_batch:
+                np.copyto(self.delta_biases[-1], bias_gradient)
             else:
-                self.delta_biases[oli] += bias_gradient
+                self.delta_biases[-1] += bias_gradient
 
             # Calculate input gradients for previous layer
             return self.__conv2d_backward_input(
                 weight=ol.synapse_weights,
-                errors=self.errors[oli],
-                input_shape=self.network.layers[oli - 1].neuron_values.shape,
+                errors=self.errors[-1],
+                input_shape=self.network.layers[-2].neuron_values.shape,
                 stride=ol.synapses.stride,
             )
 
@@ -578,7 +592,6 @@ class BackpropagationThroughTime:
         self,
         spike_values: list[NDArray[float32]],
         weighted_input_values: list[NDArray[float32]],
-        beta: float32,
         delta_next: NDArray[float32],
         li: int,
     ) -> NDArray[float32]:
@@ -608,11 +621,11 @@ class BackpropagationThroughTime:
                 self.errors[li],
                 self.delta_weights[li],
                 trans_a=True,
-                beta=beta,
+                beta=float32(0) if self.new_ts_batch else float32(1),
             )
             # Bias gradient is sum of errors across batch dimension
             bias_gradient = np.sum(self.errors[li], axis=0)
-            if beta == 0.0:
+            if self.new_ts_batch:
                 np.copyto(self.delta_biases[li], bias_gradient)
             else:
                 self.delta_biases[li] += bias_gradient
@@ -623,11 +636,11 @@ class BackpropagationThroughTime:
                 errors=self.errors[li],
                 delta_weights=self.delta_weights[li],
                 stride=layer.synapses.stride,
-                beta=beta,
+                beta=float32(0) if self.new_ts_batch else float32(1),
             )
             # Bias gradient is sum of errors across batch, height, and width dimensions
             bias_gradient = np.sum(self.errors[li], axis=(0, 1, 2))
-            if beta == 0.0:
+            if self.new_ts_batch:
                 np.copyto(self.delta_biases[li], bias_gradient)
             else:
                 self.delta_biases[li] += bias_gradient
@@ -637,7 +650,6 @@ class BackpropagationThroughTime:
     def __backward_input(
         self,
         weighted_input_values: list[NDArray[float32]],
-        beta: float32,
         delta_next: NDArray[float32],
         input_values: NDArray[float32],
     ) -> None:
@@ -665,11 +677,11 @@ class BackpropagationThroughTime:
                 self.errors[0],
                 self.delta_weights[0],
                 trans_a=True,
-                beta=beta,
+                beta=float32(0) if self.new_ts_batch else float32(1),
             )
             # Bias gradient is sum of errors across batch dimension
             bias_gradient = np.sum(self.errors[0], axis=0)
-            if beta == 0.0:
+            if self.new_ts_batch:
                 np.copyto(self.delta_biases[0], bias_gradient)
             else:
                 self.delta_biases[0] += bias_gradient
@@ -680,11 +692,11 @@ class BackpropagationThroughTime:
                 errors=self.errors[0],
                 delta_weights=self.delta_weights[0],
                 stride=input_layer.synapses.stride,
-                beta=beta,
+                beta=float32(0) if self.new_ts_batch else float32(1),
             )
             # Bias gradient is sum of errors across batch, height, and width dimensions
             bias_gradient = np.sum(self.errors[0], axis=(0, 1, 2))
-            if beta == 0.0:
+            if self.new_ts_batch:
                 np.copyto(self.delta_biases[0], bias_gradient)
             else:
                 self.delta_biases[0] += bias_gradient
@@ -725,13 +737,17 @@ class BackpropagationThroughTime:
         ```
         """
         self.number_backed += len(targets)
+
+        # You can't backprop more timesteps than have been forward propagated
         assert self.number_backed <= len(self.inputs)
         assert self.number_backed <= len(self.weighted_input_values)
         assert self.number_backed <= len(self.spike_values)
 
         for target in reversed(targets):
-            # If its the first `backward` call since `update` set to `0.0` so we re-zero `delta_weights` else set to `1.0` so we add to `delta_weights`. This saves having to make a seperate call to re-zero `delta_weights`.
-            beta = float32(1.0) if self.backed else float32(0.0)
+            # If its the first `backward` call since `update` set to `0.0` so
+            # we re-zero `delta_weights` else set to `1.0` so we add to
+            # `delta_weights`. This saves having to make a separate call to
+            # re-zero `delta_weights`.
             number_of_layers = len(self.network.layers)
 
             # Inputs values, weighted input values and spikes for this time step.
@@ -742,7 +758,7 @@ class BackpropagationThroughTime:
 
             # Output layer
             delta_next = self.__backward_output(
-                target, spike_values, weighted_input_values, beta
+                target, spike_values, weighted_input_values
             )
 
             # Hidden layers
@@ -750,7 +766,6 @@ class BackpropagationThroughTime:
                 delta_next = self.__backward_hidden(
                     spike_values,
                     weighted_input_values,
-                    beta,
                     delta_next,
                     li,
                 )
@@ -758,12 +773,11 @@ class BackpropagationThroughTime:
             # Input layer
             self.__backward_input(
                 weighted_input_values,
-                beta,
                 delta_next,
                 input_values,
             )
 
-            self.backed = True
+            self.new_ts_batch = False
 
     def update(self, learning_rate: float32):
         """Updates the weights and biases in the network"""
@@ -777,7 +791,7 @@ class BackpropagationThroughTime:
                 learning_rate * delta_biases / float32(self.number_backed)
             )
 
-        self.backed = False
+        self.new_ts_batch = True
         self.inputs = []
         self.number_backed = 0
 
