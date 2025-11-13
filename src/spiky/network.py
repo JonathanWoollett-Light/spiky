@@ -311,7 +311,7 @@ class FeedForwardNetwork:
             incoming_neurons = new_layer.neuron_values.shape
             self.layers.append(new_layer)
 
-    def forward(self, inputs: NDArray[float32]):
+    def forward(self, inputs: NDArray[float32]) -> NDArray[float32]:
         spikes = inputs
         for layer in self.layers:
             layer.forward(spikes)
@@ -544,7 +544,7 @@ class BackpropagationThroughTime:
         output_gradients = self.__surrogate(ol.neurons, weighted_input_values[-1])
 
         # Multiply derivative of MSE by surrogate gradients.
-        mse_der = float32(2) * (spike_values[-1] - target) / target.shape[0]
+        mse_der = float32(2) * (spike_values[-1] - target) / float32(len(target))
         self.errors[-1] = mse_der * output_gradients
 
         if isinstance(ol.synapses, Linear):

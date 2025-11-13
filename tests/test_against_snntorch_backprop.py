@@ -97,6 +97,84 @@ def test_against_snntorch():
 
     utils.reset(snn_net)  # type: ignore
 
+    forward_values = {}
+    backward_gradients = {}
+
+    # Hook counters for tracking execution order
+    hook_counter = {"forward": 0, "backward": 0}
+
+    def make_forward_hook(name):
+        """Create a hook that captures forward pass values"""
+
+        def hook(module, input, output):
+            hook_counter["forward"] += 1
+            if isinstance(output, tuple):
+                # For modules that return (spike, membrane)
+                forward_values[f"{name}_spike"] = tnp(output[0])
+                forward_values[f"{name}_membrane"] = tnp(output[1])
+                print(f"[FORWARD {hook_counter['forward']}] {name}")
+                print(
+                    f"  Spike shape: {output[0].shape}, mean: {output[0].mean():.6f}, std: {output[0].std():.6f}"
+                )
+                print(
+                    f"  Membrane shape: {output[1].shape}, mean: {output[1].mean():.6f}, std: {output[1].std():.6f}"
+                )
+            else:
+                forward_values[name] = tnp(output)
+                print(f"[FORWARD {hook_counter['forward']}] {name}")
+                print(
+                    f"  Shape: {output.shape}, mean: {output.mean():.6f}, std: {output.std():.6f}"
+                )
+
+        return hook
+
+    def make_backward_hook(name):
+        """Create a hook that captures backward pass gradients"""
+
+        def hook(module, grad_input, grad_output):
+            hook_counter["backward"] += 1
+            print(f"\n[BACKWARD {hook_counter['backward']}] {name}")
+
+            # grad_output is gradient w.r.t. output of this module
+            if grad_output[0] is not None:
+                backward_gradients[f"{name}_grad_output"] = tnp(grad_output[0])
+                print(
+                    f"  Grad output shape: {grad_output[0].shape}, mean: {grad_output[0].mean():.6f}, std: {grad_output[0].std():.6f}"
+                )
+
+            # grad_input is gradient w.r.t. input of this module
+            if isinstance(grad_input, tuple):
+                for idx, gi in enumerate(grad_input):
+                    if gi is not None:
+                        backward_gradients[f"{name}_grad_input_{idx}"] = tnp(gi)
+                        print(
+                            f"  Grad input[{idx}] shape: {gi.shape}, mean: {gi.mean():.6f}, std: {gi.std():.6f}"
+                        )
+            elif grad_input is not None:
+                backward_gradients[f"{name}_grad_input"] = tnp(grad_input)
+                print(f"  Grad input shape: {grad_input.shape}")
+
+        return hook
+
+    # Register hooks on all layers
+    snn_net.fc1.register_forward_hook(make_forward_hook("fc1"))
+    snn_net.fc1.register_full_backward_hook(make_backward_hook("fc1"))
+
+    snn_net.lif1.register_forward_hook(make_forward_hook("lif1"))
+    snn_net.lif1.register_full_backward_hook(make_backward_hook("lif1"))
+
+    snn_net.fc2.register_forward_hook(make_forward_hook("fc2"))
+    snn_net.fc2.register_full_backward_hook(make_backward_hook("fc2"))
+
+    snn_net.lif2.register_forward_hook(make_forward_hook("lif2"))
+    snn_net.lif2.register_full_backward_hook(make_backward_hook("lif2"))
+
+    snn_net.fc3.register_forward_hook(make_forward_hook("fc3"))
+    snn_net.fc3.register_full_backward_hook(make_backward_hook("fc3"))
+
+    snn_net.lif3.register_forward_hook(make_forward_hook("lif3"))
+    snn_net.lif3.register_full_backward_hook(make_backward_hook("lif3"))
+
     # Forward pass - snnTorch
     snn_spikes = []  # type:ignore
     for data in data_in:
