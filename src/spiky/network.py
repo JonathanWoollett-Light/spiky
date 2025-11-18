@@ -337,6 +337,8 @@ class BackpropagationThroughTime:
     """Underlying feed forward network"""
     weighted_input_values: list[list[NDArray[float32]]]
     """Weighted inputs for each timestep for each layer"""
+    membrane_potentials: list[list[NDArray[float32]]]
+    """Membrane potentials for each timestep for each layer"""
     spike_values: list[list[NDArray[float32]]]
     """The spikes for each timestep for each layer"""
     delta_weights: list[NDArray[float32]]
@@ -368,6 +370,7 @@ class BackpropagationThroughTime:
         ]
         self.new_ts_batch = True
         self.weighted_input_values = []
+        self.membrane_potentials = []
         self.spike_values = []
         self.inputs = []
         self.number_backed = 0
@@ -379,12 +382,19 @@ class BackpropagationThroughTime:
         self.__update_cache()
         assert len(inputs) <= len(self.weighted_input_values)
         assert len(inputs) <= len(self.spike_values)
+        assert len(inputs) <= len(self.membrane_potentials)
 
         # Iterate through each timestep
-        for input_data, timestep_weighted_input_values, timestep_spike_values in zip(
+        for (
+            input_data,
+            timestep_weighted_input_values,
+            timestep_spike_values,
+            timestep_membrane_potentials,
+        ) in zip(
             inputs,
             self.weighted_input_values[prev_inputs:],
             self.spike_values[prev_inputs:],
+            self.membrane_potentials[prev_inputs:],
         ):
             spikes = input_data
             # Iterate through each layer
@@ -392,10 +402,12 @@ class BackpropagationThroughTime:
                 layer,
                 layer_timestep_weighted_input_values,
                 layer_timestep_spike_values,
+                layer_timestep_membrane_potentials,
             ) in zip(
                 self.network.layers,
                 timestep_weighted_input_values,
                 timestep_spike_values,
+                timestep_membrane_potentials,
             ):
                 layer.forward(spikes)
 
@@ -404,6 +416,7 @@ class BackpropagationThroughTime:
                     layer_timestep_weighted_input_values, layer.weighted_input_values
                 )
                 np.copyto(layer_timestep_spike_values, layer.spike_values)
+                np.copyto(layer_timestep_membrane_potentials, layer.neuron_values)
                 spikes = layer.spike_values
 
     def __update_cache(self):
@@ -415,6 +428,13 @@ class BackpropagationThroughTime:
         assert len(self.weighted_input_values) == len(self.spike_values)
 
         new = max(timesteps - len(self.weighted_input_values), 0)
+        self.membrane_potentials += [
+            [
+                np.zeros(layer.neuron_values.shape, dtype=float32)
+                for layer in self.network.layers
+            ]
+            for _ in range(new)
+        ]
         self.weighted_input_values += [
             [
                 np.zeros(layer.weighted_input_values.shape, dtype=float32)
@@ -535,6 +555,7 @@ class BackpropagationThroughTime:
         target: NDArray[float32],
         spike_values: list[NDArray[float32]],
         weighted_input_values: list[NDArray[float32]],
+        membrane_potentials: list[NDArray[float32]],
     ) -> NDArray[float32]:
         number_of_layers = len(self.network.layers)
         # output_layer_index
@@ -544,8 +565,12 @@ class BackpropagationThroughTime:
         output_gradients = self.__surrogate(ol.neurons, weighted_input_values[-1])
 
         # Multiply derivative of MSE by surrogate gradients.
-        mse_der = float32(2) * (spike_values[-1] - target) / float32(len(target))
+        mse_der = float32(2) * (spike_values[-1] - target) / float32(target.size)
         self.errors[-1] = mse_der * output_gradients
+
+        print(
+            f"spiky backward:\n\tspike_values[-1]: {spike_values[-1].flatten()}\n\tweighted_input_values: {weighted_input_values[-1].flatten()}\n\tmembrane_potentials: {membrane_potentials[-1].flatten()}\n\toutput_gradients: {output_gradients.flatten()}\n\tself.errors[-1]: {self.errors[-1].flatten()}\n\tmse_der: {mse_der.flatten()}"
+        )
 
         if isinstance(ol.synapses, Linear):
             # Linear layer weight update
@@ -755,10 +780,11 @@ class BackpropagationThroughTime:
             timestep = len(self.inputs)
             weighted_input_values = self.weighted_input_values[timestep]
             spike_values = self.spike_values[timestep]
+            membrane_potentials = self.membrane_potentials[timestep]
 
             # Output layer
             delta_next = self.__backward_output(
-                target, spike_values, weighted_input_values
+                target, spike_values, weighted_input_values, membrane_potentials
             )
 
             # Hidden layers
