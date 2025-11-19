@@ -40,6 +40,59 @@ spiky backward:
         gradient: [0.28669438 0.27431265 0.28669438 0.27431265]
         self.errors: [-0.06538787 -0.07796431 -0.00269346 -0.08471261]
 ```
+
+The output error is calculated with:
+```python
+# output_layer_index
+ol = self.network.layers[-1]
+
+# MSE gradient
+self.errors[-1] = (
+    float32(2) * (spike_values[-1] - target) / float32(target.size)
+)
+
+# Calculate gradients using surrogate gradient
+gradient = self.__surrogate(ol.neurons, pre_spike_membrane_potentials[-1])
+
+# Set errors for output layer
+self.errors[-1] *= gradient
+
+# ...
+
+# Weights errors/gradients is the outer product of the membrane
+# potential errors with the previous layer spikes.
+# `np.outer` cannot be used as this does not support a batch
+# dimension.
+gemm(
+    spike_values[-2],
+    self.errors[-1],
+    self.delta_weights[-1],
+    trans_a=True,
+    beta=float32(0) if self.new_ts_batch else float32(1),
+)
+# Bias errors/gradient is sum of the membrane potential errors/gradients
+# across the batch dimension.
+bias_gradient = np.sum(self.errors[-1], axis=0)
+if self.new_ts_batch:
+    np.copyto(self.delta_biases[-1], bias_gradient)
+else:
+    self.delta_biases[-1] += bias_gradient
+return self.errors[-1]
+```
+where `self.__surrogate` calls `arctan_surrogate_gradient` which is:
+```python
+def arctan_surrogate_gradient(
+    self,
+    membrane_potential_in: NDArray[float32],
+    alpha=float32(2.0),
+) -> NDArray[float32]:
+    """Numpy implementation of arctan surrogate gradient kernel"""
+    grad = (1.0 / np.pi) * (
+        1.0 / (1.0 + np.power(np.pi * membrane_potential_in * (alpha / 2.0), 2.0))
+    )
+    return grad.astype(float32)
+```
+
 The full test output:
 ```
 PS C:\Users\Jonathan\Documents\spiky> poetry run pytest .\tests\test_against_snntorch_backprop.py -s
