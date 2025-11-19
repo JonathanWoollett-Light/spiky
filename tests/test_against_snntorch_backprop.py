@@ -5,6 +5,7 @@ from snntorch import surrogate  # type:ignore
 from snntorch import utils  # type:ignore
 import spiky.network as sn
 import numpy as np
+from torch.autograd import grad
 
 
 def tnp(tensor):  # type:ignore
@@ -113,11 +114,7 @@ def test_against_snntorch():
 
         return hook
 
-    # Register hooks on all layers
-    # snn_net.fc1.register_full_backward_hook(make_backward_hook("fc1"))
-    # snn_net.lif1.register_full_backward_hook(make_backward_hook("lif1"))
-    # snn_net.fc2.register_full_backward_hook(make_backward_hook("fc2"))
-    # snn_net.lif2.register_full_backward_hook(make_backward_hook("lif2"))
+    # Register hooks
     snn_net.lif3.register_forward_hook(make_forward_hook("fc3"))
     snn_net.fc3.register_full_backward_hook(make_backward_hook("fc3"))
     snn_net.lif3.register_forward_hook(make_forward_hook("lif3"))
@@ -142,11 +139,13 @@ def test_against_snntorch():
     snn_optimizer.zero_grad()  # type:ignore
     snn_loss = nn.functional.mse_loss(snn_spikes, snn_targets)  # type:ignore
 
+    print(f"snn_loss: {snn_loss}")
+
     # Loss - Spiky
     spiky_loss = ((spiky_trainer.network.layers[-1].spike_values - targets) ** 2).mean()
 
     # Check losses match
-    assert np.allclose(tnp(snn_loss), spiky_loss), f"{snn_loss}\n{spiky_loss}"
+    assert np.allclose(tnp(snn_loss), spiky_loss), f"{snn_loss}\n{siky_loss}"
 
     # Backward pass - snnTorch
     snn_loss.backward()  # type:ignore
@@ -162,18 +161,7 @@ def test_against_snntorch():
                 param.grad.clone().detach().numpy()  # type:ignore
             )
 
-            # Print snNTorch gradients for debugging
-            # print(
-            #     f"\n{name}: {snn_gradients[name]}"  # type:ignore
-            # )
-
-    # Print Spiky gradients for debugging
-    # print(f"\ndelta_weights[0]: {spiky_trainer.delta_weights[0]}")
-    # print(f"\ndelta_biases[0]: {spiky_trainer.delta_biases[0]}")
-    # print(f"\ndelta_weights[1]: {spiky_trainer.delta_weights[1]}")
-    # print(f"\ndelta_biases[1]: {spiky_trainer.delta_biases[1]}")
-    # print(f"\ndelta_weights[2]: {spiky_trainer.delta_weights[2]}")
-    # print(f"\ndelta_biases[2]: {spiky_trainer.delta_biases[2]}")
+    # print(f"snn_gradients: {snn_gradients}")
 
     # Check gradients match
     assert np.allclose(

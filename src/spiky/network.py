@@ -80,7 +80,7 @@ class LIF:
 
     def spike_update(
         self, weighted_input: NDArray[float32], membrane_potential_in: NDArray[float32]
-    ) -> tuple[NDArray[float32], NDArray[float32]]:
+    ) -> tuple[NDArray[float32], NDArray[float32], NDArray[float32]]:
         """Numpy implementation of spike update kernel"""
         # Step 1: Compute membrane potential after decay and input
         membrane_potential_pre = weighted_input + self.decay * membrane_potential_in
@@ -91,14 +91,22 @@ class LIF:
         # Step 3: Apply reset by subtraction
         membrane_potential_out = membrane_potential_pre - spiked * self.threshold
 
-        return spiked, membrane_potential_out.astype(float32)
+        return (
+            spiked,
+            membrane_potential_out.astype(float32),
+            membrane_potential_pre.astype(float32),
+        )
 
     def arctan_surrogate_gradient(
-        self, membrane_potential_in: NDArray[float32]
+        self,
+        membrane_potential_in: NDArray[float32],
+        alpha=float32(2.0),
     ) -> NDArray[float32]:
         """Numpy implementation of arctan surrogate gradient kernel"""
-        x = np.pi * membrane_potential_in
-        return (1.0 / (1.0 + (x * x))).astype(float32)
+        grad = (1.0 / np.pi) * (
+            1.0 / (1.0 + np.power(np.pi * membrane_potential_in * (alpha / 2.0), 2.0))
+        )
+        return grad.astype(float32)
 
 
 @dataclass
@@ -184,6 +192,8 @@ class FeedForwardLayer:
     """The spike values of neurons in this layer"""
     weighted_input_values: NDArray[float32]
     """The weighted input values into neurons"""
+    pre_spike_membrane_potentials: NDArray[float32]
+    """The pre-spike membrane potentials of neurons"""
 
     def __init__(
         self,
@@ -213,6 +223,9 @@ class FeedForwardLayer:
                     self.synapse_biases = np.zeros((synapses.outputs,), float32)
                     self.spike_values = np.zeros((samples, synapses.outputs), float32)
                     self.weighted_input_values = np.zeros(
+                        (samples, synapses.outputs), float32
+                    )
+                    self.pre_spike_membrane_potentials = np.zeros(
                         (samples, synapses.outputs), float32
                     )
                     pass
@@ -250,6 +263,9 @@ class FeedForwardLayer:
                     self.weighted_input_values = np.zeros(
                         (samples, out_h, out_w, synapses.out_channels), float32
                     )
+                    self.pre_spike_membrane_potentials = np.zeros(
+                        (samples, out_h, out_w, synapses.out_channels), float32
+                    )
 
                     raise Exception("todo")
                 case _:
@@ -278,11 +294,12 @@ class FeedForwardLayer:
 
         # Propagate into neurons.
         if isinstance(self.neurons, LIF):
-            spikes, membrane = self.neurons.spike_update(
+            spikes, membrane, pre_spike = self.neurons.spike_update(
                 self.weighted_input_values, self.neuron_values
             )
             self.spike_values = spikes
             self.neuron_values = membrane
+            self.pre_spike_membrane_potentials = pre_spike
         else:
             raise Exception("todo")
 
@@ -372,6 +389,7 @@ class BackpropagationThroughTime:
         self.weighted_input_values = []
         self.membrane_potentials = []
         self.spike_values = []
+        self.pre_spike_membrane_potentials = []
         self.inputs = []
         self.number_backed = 0
 
@@ -383,6 +401,7 @@ class BackpropagationThroughTime:
         assert len(inputs) <= len(self.weighted_input_values)
         assert len(inputs) <= len(self.spike_values)
         assert len(inputs) <= len(self.membrane_potentials)
+        assert len(inputs) <= len(self.pre_spike_membrane_potentials)
 
         # Iterate through each timestep
         for (
@@ -390,11 +409,13 @@ class BackpropagationThroughTime:
             timestep_weighted_input_values,
             timestep_spike_values,
             timestep_membrane_potentials,
+            timestep_pre_spike_membrane_potentials,
         ) in zip(
             inputs,
             self.weighted_input_values[prev_inputs:],
             self.spike_values[prev_inputs:],
             self.membrane_potentials[prev_inputs:],
+            self.pre_spike_membrane_potentials[prev_inputs:],
         ):
             spikes = input_data
             # Iterate through each layer
@@ -403,11 +424,13 @@ class BackpropagationThroughTime:
                 layer_timestep_weighted_input_values,
                 layer_timestep_spike_values,
                 layer_timestep_membrane_potentials,
+                layer_timestep_pre_spike_membrane_potentials,
             ) in zip(
                 self.network.layers,
                 timestep_weighted_input_values,
                 timestep_spike_values,
                 timestep_membrane_potentials,
+                timestep_pre_spike_membrane_potentials,
             ):
                 layer.forward(spikes)
 
@@ -417,6 +440,10 @@ class BackpropagationThroughTime:
                 )
                 np.copyto(layer_timestep_spike_values, layer.spike_values)
                 np.copyto(layer_timestep_membrane_potentials, layer.neuron_values)
+                np.copyto(
+                    layer_timestep_pre_spike_membrane_potentials,
+                    layer.pre_spike_membrane_potentials,
+                )
                 spikes = layer.spike_values
 
     def __update_cache(self):
@@ -449,9 +476,18 @@ class BackpropagationThroughTime:
             ]
             for _ in range(new)
         ]
+        self.pre_spike_membrane_potentials += [
+            [
+                np.zeros(layer.pre_spike_membrane_potentials.shape, dtype=float32)
+                for layer in self.network.layers
+            ]
+            for _ in range(new)
+        ]
 
     def __surrogate(
-        self, neurons: LIF | Placeholder, membrane_potential: NDArray[float32]
+        self,
+        neurons: LIF | Placeholder,
+        membrane_potential: NDArray[float32],
     ) -> NDArray[float32]:
         """Calculate the (surrogate) gradient for a given type of neurons with the given neuron values"""
         if isinstance(neurons, LIF):
@@ -556,24 +592,38 @@ class BackpropagationThroughTime:
         spike_values: list[NDArray[float32]],
         weighted_input_values: list[NDArray[float32]],
         membrane_potentials: list[NDArray[float32]],
+        pre_spike_membrane_potentials: list[NDArray[float32]],
     ) -> NDArray[float32]:
         number_of_layers = len(self.network.layers)
         # output_layer_index
         ol = self.network.layers[-1]
 
-        # Calculate output gradients using MSE loss
-        output_gradients = self.__surrogate(ol.neurons, weighted_input_values[-1])
-
-        # Multiply derivative of MSE by surrogate gradients.
-        mse_der = float32(2) * (spike_values[-1] - target) / float32(target.size)
-        self.errors[-1] = mse_der * output_gradients
-
-        print(
-            f"spiky backward:\n\tspike_values[-1]: {spike_values[-1].flatten()}\n\tweighted_input_values: {weighted_input_values[-1].flatten()}\n\tmembrane_potentials: {membrane_potentials[-1].flatten()}\n\toutput_gradients: {output_gradients.flatten()}\n\tself.errors[-1]: {self.errors[-1].flatten()}\n\tmse_der: {mse_der.flatten()}"
+        # MSE gradient
+        self.errors[-1] = (
+            float32(2) * (spike_values[-1] - target) / float32(target.size)
         )
 
+        # Calculate gradients using surrogate gradient
+        gradient = self.__surrogate(ol.neurons, pre_spike_membrane_potentials[-1])
+
+        # Set errors for output layer
+        self.errors[-1] *= gradient
+
+        print("spiky backward:")
+        print(f"\tspike_values: {spike_values[-1].flatten()}")
+        print(f"\tweighted_input_values: {weighted_input_values[-1].flatten()}")
+        print(f"\tmembrane_potentials: {membrane_potentials[-1].flatten()}")
+        print(
+            f"\tpre_spike_membrane_potentials: {pre_spike_membrane_potentials[-1].flatten()}"
+        )
+        print(f"\tgradient: {gradient.flatten()}")
+        print(f"\tself.errors: {self.errors[-1].flatten()}")
+
         if isinstance(ol.synapses, Linear):
-            # Linear layer weight update
+            # Weights errors/gradients is the outer product of the membrane
+            # potential errors with the previous layer spikes.
+            # `np.outer` cannot be used as this does not support a batch
+            # dimension.
             gemm(
                 spike_values[-2],
                 self.errors[-1],
@@ -581,7 +631,8 @@ class BackpropagationThroughTime:
                 trans_a=True,
                 beta=float32(0) if self.new_ts_batch else float32(1),
             )
-            # Bias gradient is sum of errors across batch dimension
+            # Bias errors/gradient is sum of the membrane potential errors/gradients
+            # across the batch dimension.
             bias_gradient = np.sum(self.errors[-1], axis=0)
             if self.new_ts_batch:
                 np.copyto(self.delta_biases[-1], bias_gradient)
@@ -617,13 +668,13 @@ class BackpropagationThroughTime:
         self,
         spike_values: list[NDArray[float32]],
         weighted_input_values: list[NDArray[float32]],
+        # The errors or gradient w.r.t to the succeeding layers membrane potentials.
         delta_next: NDArray[float32],
         li: int,
+        pre_spike_membrane_potentials: list[NDArray[float32]],
     ) -> NDArray[float32]:
         layer = self.network.layers[li]
         after_layer = self.network.layers[li + 1]
-
-        gradient = self.__surrogate(layer.neurons, weighted_input_values[li])
 
         # Calculate the error for this layer
         if isinstance(after_layer.synapses, Linear):
@@ -637,6 +688,12 @@ class BackpropagationThroughTime:
                 stride=after_layer.synapses.stride,
             )
 
+        # Calculate surrogate gradient
+        gradient = self.__surrogate(
+            layer.neurons,
+            pre_spike_membrane_potentials[li],
+        )
+
         self.errors[li] *= gradient
 
         # Update weights for current layer
@@ -648,7 +705,6 @@ class BackpropagationThroughTime:
                 trans_a=True,
                 beta=float32(0) if self.new_ts_batch else float32(1),
             )
-            # Bias gradient is sum of errors across batch dimension
             bias_gradient = np.sum(self.errors[li], axis=0)
             if self.new_ts_batch:
                 np.copyto(self.delta_biases[li], bias_gradient)
@@ -663,7 +719,6 @@ class BackpropagationThroughTime:
                 stride=layer.synapses.stride,
                 beta=float32(0) if self.new_ts_batch else float32(1),
             )
-            # Bias gradient is sum of errors across batch, height, and width dimensions
             bias_gradient = np.sum(self.errors[li], axis=(0, 1, 2))
             if self.new_ts_batch:
                 np.copyto(self.delta_biases[li], bias_gradient)
@@ -677,11 +732,10 @@ class BackpropagationThroughTime:
         weighted_input_values: list[NDArray[float32]],
         delta_next: NDArray[float32],
         input_values: NDArray[float32],
+        pre_spike_membrane_potentials: list[NDArray[float32]],
     ) -> None:
         input_layer = self.network.layers[0]
         first_hidden_layer = self.network.layers[1]
-
-        gradient = self.__surrogate(input_layer.neurons, weighted_input_values[0])
 
         if isinstance(first_hidden_layer.synapses, Linear):
             self.errors[0] = np.matmul(delta_next, first_hidden_layer.synapse_weights.T)
@@ -693,6 +747,10 @@ class BackpropagationThroughTime:
                 input_shape=input_layer.neuron_values.shape,
                 stride=first_hidden_layer.synapses.stride,
             )
+
+        gradient = self.__surrogate(
+            input_layer.neurons, pre_spike_membrane_potentials[0]
+        )
 
         self.errors[0] *= gradient
 
@@ -781,10 +839,15 @@ class BackpropagationThroughTime:
             weighted_input_values = self.weighted_input_values[timestep]
             spike_values = self.spike_values[timestep]
             membrane_potentials = self.membrane_potentials[timestep]
+            pre_spike_membrane_potentials = self.pre_spike_membrane_potentials[timestep]
 
             # Output layer
             delta_next = self.__backward_output(
-                target, spike_values, weighted_input_values, membrane_potentials
+                target,
+                spike_values,
+                weighted_input_values,
+                membrane_potentials,
+                pre_spike_membrane_potentials,
             )
 
             # Hidden layers
@@ -794,6 +857,7 @@ class BackpropagationThroughTime:
                     weighted_input_values,
                     delta_next,
                     li,
+                    pre_spike_membrane_potentials,
                 )
 
             # Input layer
@@ -801,6 +865,7 @@ class BackpropagationThroughTime:
                 weighted_input_values,
                 delta_next,
                 input_values,
+                pre_spike_membrane_potentials,
             )
 
             self.new_ts_batch = False
