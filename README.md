@@ -111,14 +111,16 @@ An overarching theme guiding my work is "Can SNNs perform online learning to ada
 
 I'm thinking I will define models and their training declaratively and then implement executors. A LIF SNN feedforward network might be defined with a JSON file, from this we can gather algorithmic metrics like the number of synaptic operations required for inference and training, we can then implement CPU and GPU (and potentially FPGA, and FPAA etc.) executors to measure system metrics like real-time performance. Importantly the algorithmic metrics give us insight into what could be acheived given optimized hardware and where potentially specilized hardware might be useful. An extreme example would be given an ASIC with memristors the latency of a LIF feedforward SNN in real-time would depend on the material properties of the memrestiors, thus we can directly tie the algorithms potential performance to hardware development e.g. "if hardware with X properties exists this algorithm will be N ms faster than the current approach".
 
-### Misc
+### Todo
 
-- re-write to lower level `cuDNN` to avoid `CuPy`s bad documentation (for `cupy.cudnn`) and worse performance.
-  The aim should be to acheive similar performance to snnTorch in n-mnist classification.
-- add GitHub action that runs black, pyright, pytest and pdoc (for pdoc it should also post the github page in the action)
-- run `snnTorch` to compare and improve until reaching similar performance for n-mnist and st-mnist.
-- output the EFLOPs metrics for models to give an idea of their foundational performance.
-- run a test including sparsity in the cost function
-- look at [ml_genn](https://github.com/genn-team/ml_genn).
-- I went to a conferece and heard about "audoAdjoint" which is intended to be a version of automatic differentiation that works for event driven models and SNNs. Look into this.
-- paper from Matias Barandiaran and James Stovold on "Developmental Graph Cellular Automata Can Grow Reservoirs" and lookup info on plastic reservoirs and how these could be implemented/used.
+- Fix backprop test.
+   My latest theory is its broken because I only forward propagate 1 timestep
+   for spiky but forward propagate all timesteps for snnTorch.
+- Finish tests running against `snnTorch` to validate results on N-MNIST.
+- Use [HDF5](https://www.h5py.org/) or [Zarr](https://zarr.dev/) from [Gin](https://github.com/JonathanWoollett-Light/gin) for better dataset handling.
+- Write GPU implementation using [NVIDIA PTX](https://docs.nvidia.com/cuda/parallel-thread-execution/)
+- Add GitHub action that runs black, pyright, pytest and pdoc (for pdoc it should also post the github page in the action)
+- Output novel neuromorphic metrics for models (e.g. eFLOPS).
+- Look at [ml_genn](https://github.com/genn-team/ml_genn).
+- I went to a conference and heard about "audoAdjoint" which is intended to be a version of automatic differentiation that works for event driven models and SNNs. Look into this.
+- Paper from Matias Barandiaran and James Stovold on "Developmental Graph Cellular Automata Can Grow Reservoirs" and lookup info on plastic reservoirs and how these could be implemented/used.

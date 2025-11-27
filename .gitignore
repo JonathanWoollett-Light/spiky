@@ -4,3 +4,9 @@ dist/
 docs/
 
 __pycache__/
+
+tmp/
+
+cache/
+
+data/

@@ -283,7 +283,7 @@ class FeedForwardLayer:
                     # Add biases (broadcasting across batch dimension)
                     self.weighted_input_values += self.synapse_biases
                 case _:
-                    raise Exception("todo")
+                    raise Exception(f"todo {inputs.shape}")
         else:
             assert isinstance(self.synapses, Convolutional)
             self.weighted_input_values = conv2d_numpy(
@@ -310,6 +310,8 @@ class FeedForwardNetwork:
 
     inputs: int
     """Number of neurons in the first layer"""
+    batch_size: int
+    """The size of batches"""
     layers: list[FeedForwardLayer]
     """Layers in the network"""
 
@@ -320,6 +322,7 @@ class FeedForwardNetwork:
         layers: list[tuple[Linear | Convolutional, LIF]],
     ):
         self.inputs = inputs
+        self.batch_size = batch_size
         incoming_neurons = (batch_size, inputs)
         self.layers = []
 
@@ -329,6 +332,7 @@ class FeedForwardNetwork:
             self.layers.append(new_layer)
 
     def forward(self, inputs: NDArray[float32]) -> NDArray[float32]:
+        assert inputs.shape == (self.batch_size, self.inputs)
         spikes = inputs
         for layer in self.layers:
             layer.forward(spikes)
