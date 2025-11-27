@@ -21,7 +21,10 @@ def test_against_snntorch():
     BATCH_SIZE = 5000
     INPUT_SIZE = 2312 # flattened polarity (2) x dim (34) and y dim (34)
     TEST_PATH = Path("./tmp/test.npy")
+    TEST_LABELS_PATH = Path("./tmp/test_labels.npy")
     TRAIN_PATH = Path("./tmp/train.npy")
+    TRAIN_LABELS_PATH = Path("./tmp/train_labels.npy")
+
     beta = 0.5  # The "decay" factor.
 
     # Sanity check
@@ -57,6 +60,8 @@ def test_against_snntorch():
         test, train = data.test, data.train
         np.save(TEST_PATH, test)
         np.save(TRAIN_PATH, train)
+        np.save(TEST_LABELS_PATH, data.test_labels)
+        np.save(TRAIN_LABELS_PATH, data.train_labels)
 
     # Sanity checks
     TIMESTEPS = 337
@@ -109,4 +114,4 @@ def test_against_snntorch():
                     layer_store.flush()
 
     for i, layer_store in enumerate(spike_store):
-        layer_store.save(f"./tmp/layer_spikes_{i}.npy")
+        np.save(f"./tmp/layer_spikes_{i}.npy", layer_store)
