@@ -11,14 +11,16 @@ TEST_LABELS_PATH = Path("./tmp/test_labels.npy")
 TRAIN_PATH = Path("./tmp/train.npy")
 TRAIN_LABELS_PATH = Path("./tmp/train_labels.npy")
 
+
 def plot_layer_spikes(layer_spikes, test_labels, label, save, title):
     filtered = layer_spikes[test_labels == label]
     summed = filtered.sum(axis=0)
-    
+
     plt.title(title)
     plt.imshow(summed, cmap="Greys")
     plt.savefig(save, dpi=2000)
-    
+
+
 def analyze_label(
     label,
     test_labels,
@@ -26,27 +28,56 @@ def analyze_label(
     layer_spikes_1,
     layer_spikes_2,
     layer_spikes_3,
-    layer_spikes_4
+    layer_spikes_4,
 ):
-    
-    plot_layer_spikes(layer_spikes_0, test_labels, label, f"./tmp/label_{label}_layer_0.png", f"Spike Recordings for label {label} at layer 0")
-    plot_layer_spikes(layer_spikes_1, test_labels, label, f"./tmp/label_{label}_layer_1.png", f"Spike Recordings for label {label} at layer 1")
-    plot_layer_spikes(layer_spikes_2, test_labels, label, f"./tmp/label_{label}_layer_2.png", f"Spike Recordings for label {label} at layer 2")
-    plot_layer_spikes(layer_spikes_3, test_labels, label, f"./tmp/label_{label}_layer_3.png", f"Spike Recordings for label {label} at layer 3")
-    plot_layer_spikes(layer_spikes_4, test_labels, label, f"./tmp/label_{label}_layer_4.png", f"Spike Recordings for label {label} at layer 4")
+
+    plot_layer_spikes(
+        layer_spikes_0,
+        test_labels,
+        label,
+        f"./tmp/label_{label}_layer_0.png",
+        f"Spike Recordings for label {label} at layer 0",
+    )
+    plot_layer_spikes(
+        layer_spikes_1,
+        test_labels,
+        label,
+        f"./tmp/label_{label}_layer_1.png",
+        f"Spike Recordings for label {label} at layer 1",
+    )
+    plot_layer_spikes(
+        layer_spikes_2,
+        test_labels,
+        label,
+        f"./tmp/label_{label}_layer_2.png",
+        f"Spike Recordings for label {label} at layer 2",
+    )
+    plot_layer_spikes(
+        layer_spikes_3,
+        test_labels,
+        label,
+        f"./tmp/label_{label}_layer_3.png",
+        f"Spike Recordings for label {label} at layer 3",
+    )
+    plot_layer_spikes(
+        layer_spikes_4,
+        test_labels,
+        label,
+        f"./tmp/label_{label}_layer_4.png",
+        f"Spike Recordings for label {label} at layer 4",
+    )
 
     l0 = layer_spikes_0[test_labels == label]
     l1 = layer_spikes_1[test_labels == label]
     l2 = layer_spikes_2[test_labels == label]
     l3 = layer_spikes_3[test_labels == label]
     l4 = layer_spikes_4[test_labels == label]
-    all_filtered = np.concatenate((l0,l1,l2,l3,l4), axis=1)
+    all_filtered = np.concatenate((l0, l1, l2, l3, l4), axis=1)
     print(f"all_filtered.shape: {all_filtered.shape}")
     all_summed = all_filtered.sum(axis=0)
     plt.title(f"Spike Recordings for label {label}")
     plt.imshow(all_summed, cmap="Greys")
     plt.savefig(f"./tmp/label_{label}_layer_all.png", dpi=2000)
-    
 
     # nonzero = filtered.nonzero()
     # print(f"nonzero shapes: {nonzero[0].shape}, {nonzero[1].shape}, {nonzero[2].shape}")
@@ -74,6 +105,7 @@ def analyze_label(
     # l2 = layer_spikes_2[samples, :, :]
     # l3 = layer_spikes_3[samples, :, :]
     # l4 = layer_spikes_4[samples, :, :]
+
 
 def test_analyze():
     if TEST_LABELS_PATH.exists() and TRAIN_LABELS_PATH.exists():
@@ -107,6 +139,11 @@ def test_analyze():
 
     for label in range(10):
         analyze_label(
-            label, test_labels, layer_spikes_0, layer_spikes_1, layer_spikes_2,
-            layer_spikes_3, layer_spikes_4
+            label,
+            test_labels,
+            layer_spikes_0,
+            layer_spikes_1,
+            layer_spikes_2,
+            layer_spikes_3,
+            layer_spikes_4,
         )

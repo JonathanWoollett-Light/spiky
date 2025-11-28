@@ -421,6 +421,7 @@ class BackpropagationThroughTime:
             self.membrane_potentials[prev_inputs:],
             self.pre_spike_membrane_potentials[prev_inputs:],
         ):
+            assert input_data.shape == (self.network.batch_size, self.network.inputs)
             spikes = input_data
             # Iterate through each layer
             for (

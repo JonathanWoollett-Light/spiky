@@ -12,6 +12,7 @@ from tqdm import tqdm
 from tempfile import NamedTemporaryFile
 from pathlib import Path
 
+
 # type: ignore
 def test_against_snntorch():
     # Set fixed seeds for reproducibility
@@ -19,7 +20,7 @@ def test_against_snntorch():
     np.random.seed(0)
 
     BATCH_SIZE = 5000
-    INPUT_SIZE = 2312 # flattened polarity (2) x dim (34) and y dim (34)
+    INPUT_SIZE = 2312  # flattened polarity (2) x dim (34) and y dim (34)
     TEST_PATH = Path("./tmp/test.npy")
     TEST_LABELS_PATH = Path("./tmp/test_labels.npy")
     TRAIN_PATH = Path("./tmp/train.npy")
@@ -28,13 +29,13 @@ def test_against_snntorch():
     beta = 0.5  # The "decay" factor.
 
     # Sanity check
-    assert 2*34*34 == INPUT_SIZE
+    assert 2 * 34 * 34 == INPUT_SIZE
 
     # Extract and store constant weights/biases
     params = torch.load("./tmp/params.pth")
 
     # Create net
-    layers = [784,784,392,196,10]
+    layers = [784, 784, 392, 196, 10]
     neuron_type = sn.LIF(np.float32(beta))
     net = sn.FeedForwardNetwork(
         BATCH_SIZE,
@@ -72,18 +73,23 @@ def test_against_snntorch():
     test_samples = test.shape[1]
     print(f"test_samples: {test_samples}")
     assert test_samples % BATCH_SIZE == 0
-    
 
     # Store all spikes across all layers, all timesteps and all samples.
-    
-    spike_store: list[npt.NDArray[np.float32]] = [np.memmap(
-        filename=NamedTemporaryFile(), dtype=np.float32, mode="w+", shape=(test_samples, n, TIMESTEPS)
-    ) for n in layers]
+
+    spike_store: list[npt.NDArray[np.float32]] = [
+        np.memmap(
+            filename=NamedTemporaryFile(),
+            dtype=np.float32,
+            mode="w+",
+            shape=(test_samples, n, TIMESTEPS),
+        )
+        for n in layers
+    ]
 
     # Perform forward pass
     #
     # Iterate over batches
-    with tqdm(total=test_samples*TIMESTEPS*len(layers), desc="Forward") as bar:
+    with tqdm(total=test_samples * TIMESTEPS * len(layers), desc="Forward") as bar:
         # TODO This skips the last partial batch, this is fine because currently
         # the net only supports static batch sizes so wouldn't work if given a
         # partial batch. We can add support for this (most likely but simply
@@ -98,18 +104,20 @@ def test_against_snntorch():
 
                 # Iterate over layers
                 # So as to store spikes from each layer, rather than just output.
-                for (layer,layer_store) in zip(net.layers, spike_store):
+                for layer, layer_store in zip(net.layers, spike_store):
                     # Run forward layer
                     layer.forward(input_spikes)
 
                     # Store spikes
-                    layer_store[batch_start_idx:batch_end_idx, :,ts] = layer.spike_values.copy()
+                    layer_store[batch_start_idx:batch_end_idx, :, ts] = (
+                        layer.spike_values.copy()
+                    )
 
                     # Set inputs for next layer
                     input_spikes = layer.spike_values.copy()
 
                     bar.update(BATCH_SIZE)
-                    
+
                     # Flush to disc layer spikes in this batch to save memory
                     layer_store.flush()
 

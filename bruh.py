@@ -25,7 +25,7 @@ net = nn.Sequential(
     nn.Linear(392, 196),
     snn.Leaky(beta=beta, spike_grad=spike_grad, init_hidden=True),
     nn.Linear(196, 10),
-    snn.Leaky(beta=beta, spike_grad=spike_grad, init_hidden=True, output=True)
+    snn.Leaky(beta=beta, spike_grad=spike_grad, init_hidden=True, output=True),
 ).to(device)
 
 # Load parameters from CSV
@@ -38,10 +38,10 @@ with open("./tmp/params.csv", "r") as f:
         name = row[0]
         shape = eval(row[1])  # Convert string representation of tuple back to tuple
         values_str = row[2]
-        
+
         # Convert space-separated string back to numpy array
         values = np.array(list(map(float, values_str.split())))
-        
+
         # Reshape to original shape and convert to tensor
         net_params[name] = torch.tensor(values.reshape(shape), dtype=torch.float32)
 
