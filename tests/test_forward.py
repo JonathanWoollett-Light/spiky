@@ -31,7 +31,18 @@ def test_bptt():
         INPUT,
         [(sn.Linear(784), neuron), (sn.Linear(800), neuron), (sn.Linear(10), neuron)],
     )
-    bptt = sn.BackpropagationThroughTime(net)
-    bptt.forward([cp.zeros((BATCH, INPUT), float32) for _ in range(TIMESTEPS)])  # type: ignore
-    bptt.backward([cp.zeros((BATCH, INPUT), float32) for _ in range(TIMESTEPS)])  # type: ignore
-    bptt.update(LEARNING_RATE)
+    train = net.forward([cp.zeros((BATCH, INPUT), float32) for _ in range(TIMESTEPS)], 'bptt')  # type: ignore
+    error = train.backward([cp.zeros((BATCH, INPUT), float32) for _ in range(TIMESTEPS)])  # type: ignore
+    net = error.update(LEARNING_RATE)
+
+    # train = net.forward(inputs, 'bptt')
+    # delta = train.backward(targets)
+    # net = delta.apply(LEARNING_RATE)
+    # 
+    # train = net.forward(inputs, 'bptt')
+    # ...
+    #
+    # train = net.forward(inputs, 'bptt')
+    # delta = train.backward(targets)
+    # net = delta.discard()
+
