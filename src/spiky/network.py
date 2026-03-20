@@ -71,17 +71,17 @@ class Convolutional:
 
 @dataclass
 class LIF:
-    """A description of a leaky-integrate-and-fire neuron"""
+    """A description of a set of leaky-integrate-and-fire neurons"""
 
-    decay: float32
-    """The rate of decay of the value/voltage of the neurons"""
-    threshold: float32 = float32(1)
+    decay: float32 = float32(0.8) # Commonly used decay value.
+    """The rate of decay of the value/voltage/membrane-potential of the neurons"""
+    threshold: float32 = float32(1) # Commonly used threshold value.
     """The threshold at which the neuron spikes"""
 
     def spike_update(
         self, weighted_input: NDArray[float32], membrane_potential_in: NDArray[float32]
     ) -> tuple[NDArray[float32], NDArray[float32], NDArray[float32]]:
-        """Numpy implementation of spike update kernel"""
+        """Updates the neurons, passing a timestep, accepting a new input, and returning a new output."""
         # Step 1: Compute membrane potential after decay and input
         membrane_potential_pre = weighted_input + self.decay * membrane_potential_in
 
@@ -91,18 +91,30 @@ class LIF:
         # Step 3: Apply reset by subtraction
         membrane_potential_out = membrane_potential_pre - spiked * self.threshold
 
+        # Its a little burdensome, but we need to return the pre and post spike
+        # membrane potentials for some of the learning algorithms (e.g. BPTT).
         return (
             spiked,
             membrane_potential_out.astype(float32),
             membrane_potential_pre.astype(float32),
         )
 
+
     def arctan_surrogate_gradient(
         self,
         membrane_potential_in: NDArray[float32],
-        alpha=float32(2.0),
+        alpha: float32 = float32(2.0),
     ) -> NDArray[float32]:
-        """Numpy implementation of arctan surrogate gradient kernel"""
+        """
+        Arctan surrogate gradient function commonly used for LIF neurons
+
+        This function aims to provides a smooth approximation to the gradient of
+        the spiking function (which would otherwise be non-differentiable (not
+        usable for learning)). The `alpha` parameter controls the steepness of
+        the surrogate gradient, with higher values it is a more accurate
+        approximation but can create difficulty learning (e.g. vanishing
+        gradients etc.).
+        """
         grad = (1.0 / np.pi) * (
             1.0 / (1.0 + np.power(np.pi * membrane_potential_in * (alpha / 2.0), 2.0))
         )

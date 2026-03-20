@@ -4,7 +4,6 @@ import cupy as cp  # type: ignore
 from numpy import float32
 from gin import nmnist
 
-DECAY: float32 = float32(0.8)
 THRESHOLD: float32 = float32(1.0)
 INPUT: int = 28 * 28
 BATCH: int = 10_000
@@ -13,7 +12,7 @@ LEARNING_RATE: float32 = float32(0.02)
 
 def test_net():
     _x = nmnist.nmnist()
-    neuron = sn.LIF(DECAY)
+    neuron = sn.LIF()
     net = sn.FeedForwardNetwork(
         BATCH,
         INPUT,
@@ -25,7 +24,7 @@ def test_net():
 
 def test_bptt():
     TIMESTEPS = 10
-    neuron = sn.LIF(DECAY)
+    neuron = sn.LIF()
     net = sn.FeedForwardNetwork(
         BATCH,
         INPUT,

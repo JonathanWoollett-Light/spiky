@@ -8,13 +8,6 @@ This package is not published yet.
 
 ## Development
 
-- Manages dependencies with [Poetry](https://python-poetry.org/).
-- Generate docs with `poetry run pdoc -o docs src/spiky`.
-- Format with `poetry run black .`
-- Check types with `poetry run pyright --warnings`
-- Lint with `poetry run pylint .`
-- Test with `poetry run pytest`
-
 ### Development Prerequisites
 
 1. Python >=3.13
@@ -43,6 +36,14 @@ This package is not published yet.
    ```
 
    etc.
+
+### Development Commands
+
+- Generate docs with `poetry run pdoc -o docs src/spiky`.
+- Format with `poetry run black .`
+- Check types with `poetry run pyright --warnings`
+- Lint with `poetry run pylint .`
+- Test with `poetry run pytest`
 
 ### Testing
 
