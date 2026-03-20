@@ -316,6 +316,8 @@ class FeedForwardNetwork:
     """Layers in the network"""
     spikes: NDArray[float32]
     """The spikes from the final layer at the final timestep"""
+    trainer: BackpropagationThroughTime | None
+    """The trainer for this network if currently training"""
 
     def __init__(
         self,
@@ -327,22 +329,23 @@ class FeedForwardNetwork:
         self.batch_size = batch_size
         incoming_neurons = (batch_size, inputs)
         self.layers = []
+        self.trainer = None
 
         for synapses, neurons in layers:
             new_layer = FeedForwardLayer(incoming_neurons, synapses, neurons)
             incoming_neurons = new_layer.neuron_values.shape
             self.layers.append(new_layer)
 
-    def forward(self, inputs: list[NDArray[float32]], training: str | None = None) -> BPTTForward | FeedForwardNetwork:
+    def forward(self, inputs: list[NDArray[float32]], training: str | None = None):
         match training:
             case "bptt":
-                return BPTTForward(self, inputs)
+                self.trainer = BackpropagationThroughTime(self, inputs)
             case None:
-                return self.__forward(inputs)
+                self.__forward(inputs)
             case _:
                 raise Exception(f"Unsupported training mode: {training}")
 
-    def __forward(self, inputs: list[NDArray[float32]]) -> FeedForwardNetwork:
+    def __forward(self, inputs: list[NDArray[float32]]):
         assert all([x.shape == (self.batch_size, self.inputs) for x in inputs])
         # Iterate over timesteps.
         spikes = None
@@ -356,7 +359,37 @@ class FeedForwardNetwork:
         if spikes is None:
             raise Exception("No inputs provided")
         self.spikes = spikes
-        return self
+
+    def backward(self, targets: list[NDArray[float32]]):
+        if self.trainer is None:
+            raise Exception("Cannot call backward without forward pass with training mode")
+        self.trainer.backward(targets)
+
+    def update(self, learning_rate: float32):
+        """Updates the weights and biases in the network"""
+
+        match self.trainer:
+            case None:
+                raise Exception("Cannot call update without forward pass with training mode")
+            case BackpropagationThroughTime():
+                self.__update_bptt(learning_rate)
+            case _:
+                raise Exception(f"Unsupported trainer type: {type(self.trainer)}")
+
+    def __update_bptt(self, learning_rate: float32):
+        """Updates the weights and biases in the network"""
+        assert isinstance(self.trainer, BackpropagationThroughTime)
+        
+        # Update network.
+        for layer, delta_weights, delta_biases in zip(
+            self.layers, self.trainer.delta_weights, self.trainer.delta_biases
+        ):
+            layer.synapse_weights -= (
+                learning_rate * delta_weights / float32(len(self.trainer.inputs))
+            )
+            layer.synapse_biases -= (
+                learning_rate * delta_biases / float32(len(self.trainer.inputs))
+            )
 
 
 # We currently don't support "truncated BPPT" which would use batches through time to train
@@ -372,8 +405,7 @@ class FeedForwardNetwork:
 
 
 @dataclass
-class BPTTForward:
-    network: FeedForwardNetwork
+class BackpropagationThroughTime:
     """Underlying feed forward network"""
     weighted_input_values: list[list[NDArray[float32]]]
     """Weighted inputs for each timestep for each layer"""
@@ -630,7 +662,7 @@ class BPTTForward:
         else:
             raise Exception("todo")
 
-    def backward(self, targets: list[NDArray[float32]]) -> BPTTUpdate:
+    def backward(self, targets: list[NDArray[float32]]):
         """
         Backpropagates `targets`.
         """
@@ -680,31 +712,6 @@ class BPTTForward:
                 pre_spike_membrane_potentials,
             )
 
-        return BPTTUpdate(self)
-
-@dataclass
-class BPTTUpdate:
-    inner: BPTTForward
-
-    def __init__(self, inner: BPTTForward):
-        self.inner = inner
-
-    def update(self, learning_rate: float32) -> FeedForwardNetwork:
-        """Updates the weights and biases in the network"""
-        
-        # Update network.
-        for layer, delta_weights, delta_biases in zip(
-            self.inner.network.layers, self.inner.delta_weights, self.inner.delta_biases
-        ):
-            layer.synapse_weights -= (
-                learning_rate * delta_weights / float32(len(self.inner.inputs))
-            )
-            layer.synapse_biases -= (
-                learning_rate * delta_biases / float32(len(self.inner.inputs))
-            )
-
-        # Return network.
-        return self.inner.network
 
 def gemm(
     a: NDArray[float32],

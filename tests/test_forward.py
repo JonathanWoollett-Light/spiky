@@ -31,9 +31,9 @@ def test_bptt():
         INPUT,
         [(sn.Linear(784), neuron), (sn.Linear(800), neuron), (sn.Linear(10), neuron)],
     )
-    train = net.forward([cp.zeros((BATCH, INPUT), float32) for _ in range(TIMESTEPS)], 'bptt')  # type: ignore
-    error = train.backward([cp.zeros((BATCH, INPUT), float32) for _ in range(TIMESTEPS)])  # type: ignore
-    net = error.update(LEARNING_RATE)
+    net.forward([cp.zeros((BATCH, INPUT), float32) for _ in range(TIMESTEPS)], 'bptt')  # type: ignore
+    net.backward([cp.zeros((BATCH, INPUT), float32) for _ in range(TIMESTEPS)])  # type: ignore
+    net.update(LEARNING_RATE)
 
     # train = net.forward(inputs, 'bptt')
     # delta = train.backward(targets)
